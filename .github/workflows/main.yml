@@ -71,8 +71,7 @@ jobs:
           context: .
           target: ${{ env.DOCKER_TARGET }}
           platforms: linux/arm64
-          push: false
-          load: true
+          push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Run Trivy vulnerability scanning
@@ -83,19 +82,10 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
-
-      - name: Push to Docker Hub
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: ${{ env.DOCKER_TARGET }}
-          platforms: linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-
+      
       - name: Deploy to ${{ env.DOCKER_TARGET }}
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -123,7 +113,7 @@ jobs:
             fi
 
             if [ "${{ env.DOCKER_TARGET }}" = "production" ]; then
-              PORT=10000
+              PORT=10003
             else
               PORT=10001
             fi
