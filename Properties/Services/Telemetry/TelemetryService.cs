@@ -15,18 +15,16 @@ namespace Rapsodia.Services.Telemetries
         public TelemetryService(AppDbContext context, IConfiguration configuration)
         {
             _context = context;
-            // Busca a chave dentro da seção "Security" do appsettings.json
-            _agentApiKey = configuration["Security:AgentApiKey"] ?? throw new Exception("API Key do Agente não configurada no appsettings.");
+            _agentApiKey = configuration["Security:AgentApiKey"] ?? configuration["AGENT_APIKEY"] ?? "";
+            Console.WriteLine($"🔍 [AUTH] Chave esperada: '{_agentApiKey}'");
         }
 
         public async Task<ResponseModel<TelemetryResponseDTO>> CreateTelemetry(TelemetryCreateDTO dto, string? providedKey)
         {
-            // 1. VALIDAÇÃO DE SEGURANÇA (CISO) - Compara com a chave do config
-            if (string.IsNullOrEmpty(providedKey) || providedKey != _agentApiKey)
+            if (providedKey?.Trim() != _agentApiKey.Trim())
                 return new ResponseModel<TelemetryResponseDTO> { Status = false, Mensagem = "Acesso negado: Agente não autorizado." };
 
-            // 2. VALIDAÇÃO DE DADOS (CTO)
-            if (dto.EntropyValue < 0 || dto.EntropyValue > 8)
+            if (dto.EntropyValue < 0 || dto.EntropyValue > 10)
                 return new ResponseModel<TelemetryResponseDTO> { Status = false, Mensagem = "Valor de entropia inválido." };
 
             try
@@ -72,7 +70,6 @@ namespace Rapsodia.Services.Telemetries
             };
         }
 
-        // Métodos obrigatórios da interface que podem estar faltando no seu arquivo:
         public async Task<ResponseModel<TelemetryResponseDTO>> GetTelemetryById(int id)
         {
             var t = await _context.Telemetries.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
@@ -89,11 +86,39 @@ namespace Rapsodia.Services.Telemetries
             return new ResponseModel<bool> { Status = true, Dados = true };
         }
 
-        // Stub para o método GetStats se necessário
-        public async Task<ResponseModel<TelemetryStatsDTO>> GetStats()
-            => new ResponseModel<TelemetryStatsDTO> { Status = true, Dados = new TelemetryStatsDTO() };
 
-        // Stub para o método GetSince se necessário
+        public async Task<ResponseModel<TelemetryStatsDTO>> GetStats()
+        {
+            try
+            {
+                var query = _context.Telemetries.AsNoTracking();
+                var data = await _context.Telemetries.AsNoTracking().ToListAsync();
+                if (!data.Any()) return new ResponseModel<TelemetryStatsDTO> { Status = true, Dados = new TelemetryStatsDTO() };
+
+                var stats = new TelemetryStatsDTO
+                {
+                    TotalRecords = data.Count,
+                    CriticalCount = data.Count(t => t.RiskLevel == "CRITICAL"),
+                    HighCount = data.Count(t => t.RiskLevel == "HIGH"),
+                    MediumCount = data.Count(t => t.RiskLevel == "MEDIUM"),
+                    LowCount = data.Count(t => t.RiskLevel == "LOW"),
+                    AverageEntropy = data.Average(t => t.EntropyValue),
+                    MaxEntropy = data.Max(t => t.EntropyValue),
+                    MinEntropy = data.Min(t => t.EntropyValue),
+                    AverageProcessingMs = (long)data.Average(t => t.ProcessingTimeMs),
+                    UniqueAgents = data.Select(t => t.AgentId).Distinct().Count(),
+                    UniqueSessions = data.Select(t => t.SessionId).Distinct().Count(),
+                    LastEventAt = data.Max(t => t.CreatedAt)
+                };
+
+                return new ResponseModel<TelemetryStatsDTO> { Status = true, Dados = stats };
+            }
+            catch (Exception ex)
+            {
+                return new ResponseModel<TelemetryStatsDTO> { Status = false, Mensagem = ex.Message };
+            }
+        }
+
         public async Task<ResponseModel<List<TelemetryResponseDTO>>> GetSince(DateTime? since)
         {
             var query = _context.Telemetries.AsNoTracking();
@@ -108,7 +133,7 @@ namespace Rapsodia.Services.Telemetries
             AgentId = t.AgentId,
             SessionId = t.SessionId,
             RiskLevel = t.RiskLevel,
-            TargetFilePath = t.TargetFilePath, // O DbContext cuida da descriptografia automática
+            TargetFilePath = t.TargetFilePath, 
             EntropyValue = t.EntropyValue,
             AnalysisTimestamp = t.AnalysisTimestamp,
             ProcessingTimeMs = t.ProcessingTimeMs,

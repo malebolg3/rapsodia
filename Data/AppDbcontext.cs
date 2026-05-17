@@ -20,6 +20,7 @@ namespace Rapsodia.Data
         public DbSet<AssetVuln> AssetVulns { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<Telemetry> Telemetries { get; set; }
+        public DbSet<SecurityAnalysis> SecurityAnalyses { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

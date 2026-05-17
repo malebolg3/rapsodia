@@ -28,7 +28,7 @@ public static class PostgresConnectionString
             var username = Uri.UnescapeDataString(userInfo[0]);
             var password = Uri.UnescapeDataString(userInfo[1]);
 
-            return $"Host={host};Port={dbPort};Database={dbName};Username={username};Password={password};Ssl Mode=Require;Trust Server Certificate=true;";
+            return $"Host={host};Port={dbPort};Database={dbName};Username={username};Password={password};Ssl Mode=Prefer;Trust Server Certificate=true;";
         }
 
         return connectionString;

@@ -10,7 +10,7 @@ namespace Rapsodia.Controllers
 {
     [ApiController]
     [Route("api/auth")]
-    [EnableRateLimiting("auth-limit")]
+    [RequireRateLimiting("auth-limit")]
     public class AuthController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -81,7 +81,7 @@ namespace Rapsodia.Controllers
                 }
 
                 var token = _tokenService.GenerateToken(user);
-                return Ok(new { token });
+                return StatusCode(500, new { message = "Erro ao processar login." });
             }
             catch (Exception ex)
             {

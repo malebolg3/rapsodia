@@ -1,17 +1,19 @@
 using Rapsodia.DTO.Response;
 using Rapsodia.DTO.TelemetryDTO;
-using Rapsodia.Services.Telemetries;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Text.Json;
+using rapsodia.Services.Telemetry;
+using Rapsodia.Services.Telemetries;
 
 namespace Rapsodia.Controllers
 {
     [Route("api/telemetry")]
     [ApiController]
-    [Authorize] 
+    [RequireRateLimiting("auth-limit")]
     public class TelemetryController : ControllerBase
     {
         private readonly ITelemetryService _telemetryService;
@@ -23,16 +25,6 @@ namespace Rapsodia.Controllers
             _logger = logger;
         }
 
-        // GET api/telemetry
-        [HttpGet]
-        [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<ResponseModel<List<TelemetryResponseDTO>>>> List([FromQuery] int count = 50)
-        {
-            var response = await _telemetryService.GetLatestTelemetries(count);
-            return response.Status ? Ok(response) : BadRequest(response);
-        }
-
-        // GET api/telemetry/stats 
         [HttpGet("stats")]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<ResponseModel<TelemetryStatsDTO>>> Stats()
@@ -41,21 +33,35 @@ namespace Rapsodia.Controllers
             return response.Status ? Ok(response) : BadRequest(response);
         }
 
-        // GET api/telemetry/stream — MONITORAMENTO EM TEMPO REAL 
         [HttpGet("stream")]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<ResponseModel<List<TelemetryResponseDTO>>>> Stream(
-            [FromQuery] string? since = null)
+        public async Task Stream(CancellationToken ct)
         {
-            DateTime? sinceDate = null;
-            if (!string.IsNullOrEmpty(since) && DateTime.TryParse(since, out var parsed))
-                sinceDate = parsed.ToUniversalTime();
+            Response.Headers["Content-Type"] = "text/event-stream";
+            Response.Headers["Cache-Control"] = "no-cache";
+            Response.Headers["Connection"] = "keep-alive";
 
-            var response = await _telemetryService.GetSince(sinceDate);
-            return response.Status ? Ok(response) : BadRequest(response);
+            while (!ct.IsCancellationRequested)
+            {
+                var response = await _telemetryService.GetLatestTelemetries(1);
+
+                if (response.Status && response.Dados?.Count > 0)
+                {
+                    var data = response.Dados.First();
+                    var json = JsonSerializer.Serialize(new
+                    {
+                        valor = data.EntropyValue,
+                        timestamp = data.AnalysisTimestamp.ToString("HH:mm:ss")
+                    });
+
+                    await Response.WriteAsync($"data: {json}\n\n");
+                    await Response.Body.FlushAsync();
+                }
+
+                await Task.Delay(2000, ct);
+            }
         }
 
-        // GET api/telemetry/{id}
         [HttpGet("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<ResponseModel<TelemetryResponseDTO>>> GetById([FromRoute] int id)
@@ -64,9 +70,8 @@ namespace Rapsodia.Controllers
             return response.Status ? Ok(response) : NotFound(response);
         }
 
-        // POST api/telemetry 
         [HttpPost]
-        [AllowAnonymous]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<ResponseModel<TelemetryResponseDTO>>> Create(
             [FromBody] TelemetryCreateDTO dto,
             [FromHeader(Name = "X-API-KEY")] string? apiKey)
@@ -76,7 +81,6 @@ namespace Rapsodia.Controllers
             return CreatedAtAction(nameof(GetById), new { id = response.Dados?.Id }, response);
         }
 
-        // DELETE api/telemetry/{id} 
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<ResponseModel<bool>>> Delete([FromRoute] int id)
@@ -84,5 +88,24 @@ namespace Rapsodia.Controllers
             var response = await _telemetryService.DeleteTelemetry(id);
             return response.Status ? Ok(response) : NotFound(response);
         }
+
+        [HttpPost("analyze")]
+        [AllowAnonymous]
+        [RequireRateLimiting("auth-limit")]
+        public async Task<IActionResult> Analyze(
+            [FromBody] LogAnalysisRequest req,
+            [FromServices] GeminiService gemini,
+            [FromServices] ObsidianService obsidian)
+        {
+            var result = await gemini.AnalyzeSecurityThreat(req.LogContent, req.Environment);
+            await obsidian.SaveNote(result, req.Environment);
+            return Ok(new { analysis = result, saved = true });
+        }
+    }
+
+    public class LogAnalysisRequest
+    {
+        public string LogContent { get; set; } = string.Empty;
+        public string Environment { get; set; } = string.Empty;
     }
 }

@@ -25,7 +25,7 @@ public static class MigrationRunner
 
             if (!string.IsNullOrEmpty(migrationHost) && !string.IsNullOrEmpty(dbPassword))
             {
-                var migrationConnString = $"Host={migrationHost};Port=5432;Database={dbName};Username={dbUserMig};Password={dbPassword};Ssl Mode=Require;Trust Server Certificate=true;";
+                var migrationConnString = $"Host={migrationHost};Port=5432;Database={dbName};Username={dbUserMig};Password={dbPassword};Ssl Mode=Prefer;Trust Server Certificate=true;";
                 dbContext.Database.SetConnectionString(migrationConnString);
                 logger.LogInformation("🔄 Migrando via conexão direta (porta 5432)...");
             }
