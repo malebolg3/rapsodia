@@ -1,17 +1,129 @@
 services:
-  rapsodia:
-    image: thieros/rapsodia-backend:${TAG:-latest}
-    container_name: abitat_rapsodia_${ENV_NAME:-dev}
+  postgres-local:
+    image: postgres:15
+    container_name: postgres-local
     restart: always
-    env_file: .env
     environment:
-      - ASPNETCORE_ENVIRONMENT=${DOTNET_ENV:-Development}
-      - ConnectionStrings__DefaultConnection=${DATABASE_URL}
-    ports:
-      - "${PORT:-10000}:10000"
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     networks:
       - abitat_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  blue:
+    restart: always
+    networks:
+      - abitat_network
+    depends_on:
+      postgres-local:
+        condition: service_healthy
+    build:
+      context: .
+      args:
+        PROJECT_NAME: Rapsodia.Blue
+    image: thieros/rapsodia-backend:${IMAGE_TAG:-latest}
+    container_name: rapsodia_blue
+    environment:
+      ASPNETCORE_URLS: http://+:10000
+      ZAP_API_URL: http://zap-daemon:8090
+      ASSEMBLY_NAME: Rapsodia.Blue
+      DB_HOST: postgres-local
+    ports: ["5073:10000"]
+    volumes:
+      - "./data/keys/blue:/root/.aspnet/DataProtection-Keys"
+      - type: bind
+        source: ./.env.development
+        target: /app/.env.development
+        read_only: true
+      - .:/src
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://+:10000"]
+
+  red:
+    restart: always
+    networks:
+      - abitat_network
+    depends_on:
+      postgres-local:
+        condition: service_healthy
+    build:
+      context: .
+      args:
+        PROJECT_NAME: Rapsodia.Red
+    image: thieros/rapsodia-backend:${IMAGE_TAG:-latest}
+    container_name: rapsodia_red
+    environment:
+      ASPNETCORE_URLS: http://+:10000
+      ZAP_API_URL: http://zap-daemon:8090
+      ASSEMBLY_NAME: Rapsodia.Red
+      DB_HOST: postgres-local
+    ports: ["5074:10000"]
+    volumes:
+      - "./data/keys/red:/root/.aspnet/DataProtection-Keys"
+      - type: bind
+        source: ./.env.development
+        target: /app/.env.development
+        read_only: true
+      - .:/src
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://+:10000"]
+
+  engine:
+    restart: always
+    networks:
+      - abitat_network
+    depends_on:
+      postgres-local:
+        condition: service_healthy
+    build:
+      context: .
+      args:
+        PROJECT_NAME: .
+    image: thieros/rapsodia-backend:${IMAGE_TAG:-latest}
+    container_name: rapsodia_engine
+    environment:
+      ASPNETCORE_URLS: http://+:10000
+      ZAP_API_URL: http://zap-daemon:8090
+      ASSEMBLY_NAME: Rapsodia
+      DB_HOST: postgres-local
+    ports: ["5075:10000"]
+    volumes:
+      - "./data/keys/engine:/root/.aspnet/DataProtection-Keys"
+      - type: bind
+        source: ./.env.development
+        target: /app/.env.development
+        read_only: true
+      - .:/src
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://+:10000"]
+
+  zap-daemon:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: zap-daemon
+    environment:
+      - ZAP_API_KEY=${ZAP_API_KEY}
+    command:
+      - "zap.sh"
+      - "-daemon"
+      - "-host"
+      - "0.0.0.0"
+      - "-port"
+      - "8090"
+      - "-config"
+      - "api.disablekey=false"
+      - "-config"
+      - "api.key=${ZAP_API_KEY}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -H 'X-ZAP-API-KEY: ${ZAP_API_KEY}' http://localhost:8090/JSON/ || exit 1"]
+      start_period: 120s
 
 networks:
   abitat_network:
-    external: true
+    driver: bridge
+
+volumes:
+  postgres_data:
