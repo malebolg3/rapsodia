@@ -1,0 +1,30 @@
+services:
+  rapsodia:
+    image: thieros/rapsodia-backend:${TAG:-latest}
+    container_name: abitat_rapsodia_${ENV_NAME:-dev}
+    restart: always
+    env_file:
+      - .env.${ENV_NAME:-development}
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${DOTNET_ENV:-Development}
+    ports:
+      - "${PORT:-10000}:10000"
+    networks:
+      - abitat_network
+
+  postgres-local:
+    image: postgres:15
+    container_name: postgres_db_${ENV_NAME:-dev}
+    restart: always
+    env_file:
+      - .env.${ENV_NAME:-development}
+    ports:
+      - "5432:5432"
+    networks:
+      - abitat_network
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+
+networks:
+  abitat_network:
+    external: true

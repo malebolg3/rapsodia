@@ -1,5 +1,6 @@
 ﻿﻿# --- Secrets & Infrastructure ---
 .env*
+!.env.example
 *.key
 *.pem
 *.cert
@@ -20,7 +21,7 @@ publish/
 *.pdb
 
 # --- AppSettings Security ---
-appsettings.Production.json
+appsettings.*.json
 !appsettings.json
 
 # --- Data & DB ---
@@ -35,6 +36,7 @@ appsettings.Production.json
 .vscode/
 .idea/
 .DS_Store
+Rapsodia.Tests.Unit
 
 # --- Build & Frontend ---
 node_modules/

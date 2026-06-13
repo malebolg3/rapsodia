@@ -1,42 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
-	<PropertyGroup>
-		<TargetFramework>net8.0</TargetFramework>
-		<Nullable>enable</Nullable>
-		<ImplicitUsings>enable</ImplicitUsings>
-	  <UserSecretsId>82a64bb8-5264-4dfd-a3f7-c321c432b81f</UserSecretsId>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Rapsodia</RootNamespace>
+    <AssemblyName>Rapsodia</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Rapsodia.Silver\**;Rapsodia.Blue\**;Rapsodia.Red\**;Rapsodia.Tests.Unit\**</DefaultItemExcludes>
   </PropertyGroup>
 
-	<ItemGroup>
-		<Compile Remove="Controllers\Test Controller\**" />
-		<Content Remove="Controllers\Test Controller\**" />
-		<EmbeddedResource Remove="Controllers\Test Controller\**" />
-		<None Remove="Controllers\Test Controller\**" />
-	</ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="Rapsodia.Silver\Rapsodia.Silver.csproj" />
+  </ItemGroup>
 
-	<ItemGroup>
-		<PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
-		<PackageReference Include="DotNetEnv" Version="3.1.1" />
-		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.1" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.1">
-			<PrivateAssets>all</PrivateAssets>
-		</PackageReference>
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.1">
-			<PrivateAssets>all</PrivateAssets>
-		</PackageReference>
-		<PackageReference Include="Npgsql" Version="9.0.2" />
-		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.1" />
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
-		<PackageReference Include="Swashbuckle.AspNetCore.Filters" Version="8.0.0" />
-		<PackageReference Include="OpenTelemetry.Api" Version="1.15.3" />
-		<PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.1" />
-		<PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.10.1" />
-		<PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.10.0-beta.1" />
-		<PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.11.0" />
-		<PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.10.0" />
-		<PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.10.0-beta.1" />
-		<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
-	</ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="DotNetEnv" Version="3.2.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Oracle.EntityFrameworkCore" Version="8.21.150" />
+  </ItemGroup>
 
 </Project>

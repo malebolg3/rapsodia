@@ -1,0 +1,16 @@
+using Rapsodia.Blue.Application.DTOs;
+using Rapsodia.Blue.Domain.Common;
+
+namespace Rapsodia.Blue.Application.Interfaces;
+
+public interface IUserService
+{
+    Task<Result<UserResultDTO>> CreateAsync(CreateUserRequest request, CancellationToken ct);
+    Task<Result<UserResultDTO>> GetByIdAsync(int id, CancellationToken ct);
+    Task<Result<PagedResult<UserResultDTO>>> ListAsync(UserFilterDTO filter, CancellationToken ct);
+    Task<Result<UserResultDTO>> UpdateAsync(int id, EditUserRequest request, CancellationToken ct);
+    Task<Result<bool>> DisableAsync(int id, CancellationToken ct);
+    Task<Result<bool>> EnableAsync(int id, CancellationToken ct);
+    Task<Result<UserResultDTO>> AddRoleAsync(int id, AddRoleRequest request, CancellationToken ct);
+    Task<Result<bool>> RemoveRoleAsync(int id, int roleId, CancellationToken ct);
+}
