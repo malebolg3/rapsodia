@@ -23,6 +23,7 @@ publish/
 # --- AppSettings Security ---
 appsettings.*.json
 !appsettings.json
+Rainbow/Config/env.dev.js
 
 # --- Data & DB ---
 *.db
@@ -44,6 +45,7 @@ node_modules/
 dist/
 build/
 out/
+*.suo
 
 # --- Native/Generated ---
 *.exe
@@ -52,3 +54,5 @@ out/
 *.dylib
 *.tlog
 *.lastbuildstate
+.DS_Store
+Thumbs.db
