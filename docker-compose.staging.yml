@@ -1,0 +1,16 @@
+services:
+  rapsodia:
+    image: thieros/rapsodia-backend:staging
+    container_name: abitat_rapsodia_staging
+    restart: always
+    env_file: [.env.staging]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+    ports:
+      - "10001:10000"
+    networks:
+      - abitat_network
+
+networks:
+  abitat_network:
+    external: true
