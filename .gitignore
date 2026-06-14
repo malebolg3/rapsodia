@@ -23,6 +23,7 @@ publish/
 # --- AppSettings Security ---
 appsettings.*.json
 !appsettings.json
+Rainbow/
 Rainbow/Config/env.dev.js
 
 # --- Data & DB ---
@@ -46,6 +47,9 @@ dist/
 build/
 out/
 *.suo
+
+# --- Submodules ---
+Knowledge/Attractor
 
 # --- Native/Generated ---
 *.exe
