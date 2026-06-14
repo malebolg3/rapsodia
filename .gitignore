@@ -9,7 +9,7 @@
 *.ppk
 secrets.json
 **/dpkeys/
-data/
+!data/
 *.log
 
 # --- .NET Artifacts ---

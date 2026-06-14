@@ -1,0 +1,7 @@
+Rainbow
+.git
+.vs
+bin
+obj
+node_modules
+*.log
