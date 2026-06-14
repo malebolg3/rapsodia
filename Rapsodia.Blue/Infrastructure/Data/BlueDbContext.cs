@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Rapsodia.Blue.Domain.Entities;
+using Rapsodia.Blue.Domain.Entities.Olimpo;
 
 namespace Rapsodia.Blue.Infrastructure.Data;
 
@@ -12,6 +13,9 @@ public class BlueDbContext : DbContext
     public DbSet<Vuln> Vulns => Set<Vuln>();
     public DbSet<User> Users => Set<User>();
     public DbSet<AssetVuln> AssetVulns => Set<AssetVuln>();
+    public DbSet<OlimpoCredential> OlimpoCredentials => Set<OlimpoCredential>();
+    public DbSet<OlimpoTotpAccount> OlimpoTotpAccounts => Set<OlimpoTotpAccount>();
+    public DbSet<OlimpoDocument> OlimpoDocuments => Set<OlimpoDocument>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +62,40 @@ public class BlueDbContext : DbContext
         });
 
         modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
+
+        modelBuilder.Entity<OlimpoCredential>(entity =>
+        {
+            entity.ToTable("OLP_Credentials");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.EncryptedValue).IsRequired();
+            entity.Property(e => e.Environment).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Category).HasMaxLength(128);
+            entity.HasIndex(e => new { e.UserId, e.Key, e.Environment }).IsUnique();
+        });
+
+        modelBuilder.Entity<OlimpoTotpAccount>(entity =>
+        {
+            entity.ToTable("OLP_TotpAccounts");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Uri).IsRequired();
+            entity.Property(e => e.Secret).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Label).HasMaxLength(256);
+            entity.Property(e => e.Issuer).HasMaxLength(256);
+            entity.Property(e => e.Algorithm).HasMaxLength(16);
+            entity.HasIndex(e => new { e.UserId, e.Issuer, e.Label }).IsUnique();
+        });
+
+        modelBuilder.Entity<OlimpoDocument>(entity =>
+        {
+            entity.ToTable("OLP_Documents");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(512);
+            entity.Property(e => e.FileName).IsRequired().HasMaxLength(512);
+            entity.Property(e => e.ContentType).HasMaxLength(256);
+            entity.Property(e => e.StoragePath).IsRequired();
+            entity.Property(e => e.Category).HasMaxLength(128);
+        });
     }
 
     public override int SaveChanges()
