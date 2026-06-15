@@ -1,81 +1,132 @@
-# 🛡️ aBitat — Enterprise Cyber Assets & Vulnerability Management (ECVM)
+🛡️ Rapsodia - Segurança Cibernética Autônoma
+https://img.shields.io/badge/License-AGPLv3-blue.svg
+https://img.shields.io/badge/Cloud-Oracle%2520Free%2520Tier-red
+https://img.shields.io/badge/Deploy-Docker%2520Swarm-blue
+https://img.shields.io/badge/Architecture-Hexagonal%2520%252B%2520DDD-brightgreen
 
-A high-performance, secure, and scalable RESTful API designed for centralized management of IT assets and security vulnerabilities. Built with **.NET 8** (Long Term Support) following modern software engineering principles.
+🎯 O Que é o Rapsodia?
+Plataforma open source de segurança cibernética que une monitoramento, laboratórios de treinamento e inteligência de ameaças. Da sua avó ao CISO de uma Fortune 500.
 
----
+🔵 Blue: Honeypots, detecção de intrusão, alertas
 
-## 🏛️ Enterprise Architecture
+🟣 Violet: Laboratórios efêmeros de treinamento
 
-The system follows a **Modular Monolith** approach with a clear separation of concerns, ensuring high maintainability and ease of testing.
+⚪ Silver: Orquestração, telemetria, conhecimento
 
-- **Presentation Layer (Controllers):** RESTful endpoints with standard HTTP status codes, structured JSON responses, and Swagger/OpenAPI 3.0 documentation.
-- **Application Layer (Services):** Contains all business logic, orchestrating data flow between DTOs and the persistence layer. Uses **Dependency Injection (Scoped)** for lifetime management.
-- **Data Access Layer (EF Core):** Optimized persistence using Entity Framework Core with **Npgsql** for PostgreSQL.
-- **Domain Layer (Entities):** Robust models with inheritance from `BaseEntity` to ensure cross-cutting auditability.
+🚀 Instalação em 5 Minutos
+bash
+git clone https://github.com/th1eros/abitat/rapsodia.git
+cd rapsodia
+docker stack deploy -c docker-compose.prod.yml rapsodia
+Acesse: https://rapsodia.th1eros.com
 
----
+🧩 Módulos
+🔵 Blue (Defesa)
+Honeypots multi-protocolo, detecção de anomalias, bloqueio automático de IPs maliciosos.
 
-## 🛠️ Technology Stack & Decisions
+Destaque - Modo Vovó: Alerta simples: "Alguém tentou acessar seu WiFi. Bloquear?" → Um clique resolve.
 
-- **Framework:** .NET 8.0 (ASP.NET Core Web API).
-- **Database:** PostgreSQL (Cloud-native, ACID compliant).
-- **ORM:** Entity Framework Core (Code-First approach).
-- **Security:** JWT (JSON Web Tokens) with HS256 algorithm.
-- **Serialization:** System.Text.Json with `JsonStringEnumConverter` for seamless Frontend-Backend Enum synchronization.
-- **Documentation:** Swagger UI (Swashbuckle) with JWT Authorization integration.
+🟣 Violet (Laboratórios)
+Ambientes de treinamento que nascem e morrem em segundos. Kali Linux, Metasploitable, DVWA direto no navegador.
 
----
+Destaque: Labs compartilháveis por link, destruição automática após uso.
 
-## 🔐 Security & Governance (CIO/CISO Focus)
+⚪ Silver (Cérebro)
+Telemetria unificada (OpenTelemetry), base de conhecimento automatizada, agentes inteligentes com Orleans.
 
-The aBitat API prioritizes the **CIA Triad** (Confidentiality, Integrity, and Availability):
+Destaque: Sistema que aprende com cada ataque e documenta automaticamente via Obsidian.
 
-1. **Authentication & Authorization:**
-   - Stateless JWT-based authentication.
-   - Robust Bearer token validation with Issuer/Audience checks.
-2. **Data Integrity & Auditability:**
-   - **Automatic Auditing:** All entities automatically track `CreatedAt` and `UpdatedAt` timestamps via `AppDbContext` overrides.
-   - **Soft Delete Pattern:** Implemented via a `DeletedAt` timestamp and **EF Core Global Query Filters**. This ensures data is never physically removed without authorization, preserving the audit trail for SOC2/ISO 27001 compliance.
-3. **Password Security:**
-   - Industry-standard hashing using **BCrypt.Net-Next**.
-4. **Resilience:**
-   - Global Exception Handling (via Services/Controllers).
-   - Health Check endpoints (`/health`) for real-time monitoring by orchestrators (Render, K8s).
+📊 Stack
+Camada	Tecnologia
+Orquestração	Docker Swarm
+Observabilidade	OpenTelemetry + Grafana + Loki + Prometheus
+Banco	Oracle Autonomous (Free Tier) / PostgreSQL
+Cache	Redis
+Agentes	Orleans Virtual Actors
+Proxy	Cloudflare Tunnel
+Conhecimento	Obsidian + Graph Engine próprio
+🏗️ Infraestrutura
+text
+                     Cloudflare (DDoS Protection)
+                            │
+         ┌──────────────────┼──────────────────┐
+         │                  │                  │
+    rapsodia.com       rapsodia.dev       OCI Free Tier
+    (Produção)         (Laboratório)      (4 OCPU/24 GB)
+         │                  │                  │
+         └──────────────────┼──────────────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+         🔵 Blue       🟣 Violet     ⚪ Silver
+        (Defesa)       (Labs)       (Cérebro)
+🤝 Para Quem é Isso?
+👵 Sua avó protegendo o WiFi de casa
 
----
+🏠 Famílias com múltiplos dispositivos
 
-## 🛰️ Integration & Features
+🏢 Pequenas empresas sem orçamento para Splunk
 
-### 1. Asset Lifecycle Management
-Comprehensive management of IT assets (Operating Systems, WebApps, Databases, APIs, Networks).
-- **Status:** Online/Offline tracking.
-- **Archiving:** Soft-archive logic for lifecycle decommissioning.
+🎓 Universidades ensinando cibersegurança
 
-### 2. Vulnerability Intelligence
-Detailed tracking of security flaws with severity levels (Critical, High, Medium, Low) and status (Active, Resolved, Archived).
+🕵️ Analistas SOC que precisam de ferramentas acessíveis
 
-### 3. N:N Asset-Vulnerability Mapping
-Advanced relationship management allowing the mapping of specific vulnerabilities to multiple assets. 
-- **Endpoint:** `POST /api/assets/{id}/vulns/{vulnId}`
-- **Data Integrity:** Cascading rules defined via Fluent API to prevent orphaned records.
+🗺️ Roadmap
+Honeypots multi-protocolo
 
----
+Labs efêmeros com Violet
 
-## 📦 Deployment & CI/CD
+Integração Grafana + Loki
 
-- **Containerization:** Ready-to-use `Dockerfile` for standardized environments.
-- **Environment Management:** Configuration via Environment Variables (`Jwt__Key`, `ConnectionStrings__DefaultConnection`).
-- **Database Migrations:** Automated synchronization during startup `context.Database.Migrate()`.
+App mobile (React Native)
 
----
+Detecção por IA/ML
 
-## 📈 Roadmap
+Modo "Vovó" 1-click
 
-- [ ] Implementation of Role-Based Access Control (RBAC).
-- [ ] Integration with automated vulnerability scanners (Tenable, Nessus).
-- [ ] Advanced reporting engine with PDF/Excel export.
-- [ ] Multi-tenant support.
+Multi-cloud (AWS, GCP, Azure)
 
----
+📄 Licença
+GNU AGPLv3 - Use, modifique, distribua. Mantenha aberto.
 
-**CISO/CTO Note:** *aBitat is built to be the "Source of Truth" for your security posture, ensuring that every asset and its associated risks are documented and trackable.*
+⚠️ Aviso Legal: Rapsodia Red Team é uma ferramenta de teste de penetração autorizado, similar a Metasploit e Nmap. O uso ético e legal é responsabilidade do usuário final.
+
+🌟 Créditos
+Feito com ☕ e paranoia por @th1eros
+
+📖 Guia de Instalação Completo | 📚 Documentação da API
+
+❓ Sobre as Chaves Vermelhas no CONTRIBUTING.md
+As chaves vermelhas no VSCode provavelmente são erros de sintaxe no código C# dos exemplos. Isso acontece porque:
+
+VSCode tenta compilar os blocos de código dentro do .md
+
+Faltam namespaces nos exemplos (os using não estão no snippet)
+
+Classes referenciadas (como Honeypot, Lab, IPAddress) não existem no contexto do arquivo .md
+
+🟡 Isso NÃO é um problema real!
+text
+✅ O código está CORRETO conceitualmente
+⚠️ O VSCode só reclama porque falta contexto (namespaces, classes)
+🎯 Em um projeto real, com todos os arquivos, compilaria normal
+Soluções (se quiser tirar o vermelho):
+Opção 1: Ignorar (recomendado)
+
+Não afeta nada, é só visual
+
+Opção 2: Adicionar comentário no início dos blocos
+
+csharp
+// Exemplo conceitual - requer Rapsodia.Domain
+public class Honeypot
+{
+    // ...
+}
+Opção 3: Desabilitar validação C# em .md no VSCode
+
+json
+// .vscode/settings.json
+{
+    "csharp.semanticHighlighting.enabled": false
+}

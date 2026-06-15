@@ -38,7 +38,6 @@ Rainbow/Config/env.dev.js
 .vscode/
 .idea/
 .DS_Store
-Rapsodia.Tests.Unit
 
 # --- Build & Frontend ---
 node_modules/
