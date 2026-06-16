@@ -1,23 +1,51 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-COPY ["Rapsodia.csproj", "./"]
-RUN dotnet restore "Rapsodia.csproj"
 COPY . .
-RUN dotnet publish "Rapsodia.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet restore Rapsodia.csproj
+RUN dotnet restore Rapsodia.Blue/Rapsodia.Blue.csproj
+RUN dotnet restore Rapsodia.Red/Rapsodia.Red.csproj
+RUN dotnet restore Rapsodia.Silver/Rapsodia.Silver.csproj
 
-# --- AMBIENTE MALEBOLGE (Staging/Warzone) ---
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy AS staging
-WORKDIR /app
-COPY --from=build /app/publish .
-ENV ASPNETCORE_URLS=http://+:10001
-EXPOSE 10001
-ENTRYPOINT ["dotnet", "Rapsodia.dll"]
+FROM build AS build-blue
+RUN dotnet publish Rapsodia.Blue/Rapsodia.Blue.csproj -c Release -o /app/publish /p:UseAppHost=false --no-restore
 
-# --- AMBIENTE ABITAT (Production) ---
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy-chiseled AS production
+FROM build AS build-red
+RUN dotnet publish Rapsodia.Red/Rapsodia.Red.csproj -c Release -o /app/publish /p:UseAppHost=false --no-restore
+
+FROM build AS build-violet
+RUN dotnet publish Rapsodia.csproj -c Release -o /app/publish /p:UseAppHost=false --no-restore
+
+FROM build AS build-silver
+RUN dotnet publish Rapsodia.Silver/Rapsodia.Silver.csproj -c Release -o /app/publish /p:UseAppHost=false --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy-chiseled AS blue
 WORKDIR /app
-COPY --from=build --chown=1654:1654 /app/publish .
+COPY --from=build-blue --chown=1654:1654 /app/publish .
+USER 1654
+ENV ASPNETCORE_URLS=http://+:10000
+EXPOSE 10000
+ENTRYPOINT ["dotnet", "Rapsodia.Blue.dll"]
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy-chiseled AS red
+WORKDIR /app
+COPY --from=build-red --chown=1654:1654 /app/publish .
+USER 1654
+ENV ASPNETCORE_URLS=http://+:10000
+EXPOSE 10000
+ENTRYPOINT ["dotnet", "Rapsodia.Red.dll"]
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy-chiseled AS violet
+WORKDIR /app
+COPY --from=build-violet --chown=1654:1654 /app/publish .
 USER 1654
 ENV ASPNETCORE_URLS=http://+:10000
 EXPOSE 10000
 ENTRYPOINT ["dotnet", "Rapsodia.dll"]
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy-chiseled AS silver
+WORKDIR /app
+COPY --from=build-silver --chown=1654:1654 /app/publish .
+USER 1654
+ENV ASPNETCORE_URLS=http://+:10000
+EXPOSE 10000
+ENTRYPOINT ["dotnet", "Rapsodia.Silver.dll"]
