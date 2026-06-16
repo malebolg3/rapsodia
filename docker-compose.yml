@@ -7,7 +7,7 @@ services:
     env_file: [.env]
     environment:
       ASPNETCORE_ENVIRONMENT: ${ENV}
-      ASPNETCORE_URLS: http://+:10000
+      ASPNETCORE_URLS: http://0.0.0.0:10000
     ports:
       - "${PORT_BLU}:10000"
     volumes:
@@ -23,7 +23,7 @@ services:
     env_file: [.env]
     environment:
       ASPNETCORE_ENVIRONMENT: ${ENV}
-      ASPNETCORE_URLS: http://+:10000
+      ASPNETCORE_URLS: http://0.0.0.0:10000
     ports:
       - "${PORT_RED}:10000"
     volumes:
@@ -39,7 +39,7 @@ services:
     env_file: [.env]
     environment:
       ASPNETCORE_ENVIRONMENT: ${ENV}
-      ASPNETCORE_URLS: http://+:10000
+      ASPNETCORE_URLS: http://0.0.0.0:10000
     ports:
       - "${PORT_VLT}:10000"
     volumes:
@@ -55,7 +55,7 @@ services:
     env_file: [.env]
     environment:
       ASPNETCORE_ENVIRONMENT: ${ENV}
-      ASPNETCORE_URLS: http://+:10000
+      ASPNETCORE_URLS: http://0.0.0.0:10000
     ports:
       - "${PORT_SLV}:10000"
     volumes:
