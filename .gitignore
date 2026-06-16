@@ -23,8 +23,8 @@ publish/
 # --- AppSettings Security ---
 appsettings.*.json
 !appsettings.json
-Rainbow/
 Rainbow/Config/env.dev.js
+**/Properties/launchSettings.json
 
 # --- Data & DB ---
 *.db
