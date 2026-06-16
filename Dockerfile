@@ -2,6 +2,9 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 COPY . .
 RUN dotnet restore Rapsodia.csproj
+RUN dotnet restore Rapsodia.Blue/Rapsodia.Blue.csproj
+RUN dotnet restore Rapsodia.Red/Rapsodia.Red.csproj
+RUN dotnet restore Rapsodia.Silver/Rapsodia.Silver.csproj
 
 FROM build AS build-blue
 RUN dotnet publish Rapsodia.Blue/Rapsodia.Blue.csproj -c Release -o /app/publish /p:UseAppHost=false --no-restore

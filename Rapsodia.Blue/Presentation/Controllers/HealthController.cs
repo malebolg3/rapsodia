@@ -6,7 +6,6 @@ namespace Rapsodia.Blue.Presentation.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
 public class HealthController : ControllerBase
 {
     private readonly DatabaseConfigService _dbConfig;
@@ -17,6 +16,7 @@ public class HealthController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     [Produces("text/html")]
     public IActionResult Get()
     {

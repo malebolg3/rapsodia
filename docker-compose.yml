@@ -65,4 +65,4 @@ services:
 
 networks:
   rapsodia_net:
-    driver: overlay
+    driver: bridge

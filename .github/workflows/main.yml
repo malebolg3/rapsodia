@@ -4,10 +4,6 @@ on:
   push:
     branches: [ main, develop ]
 
-env:
-  REGISTRY: docker.io
-  IMAGE_NAME: thieros/rapsodia-backend
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -30,11 +26,6 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-
-    permissions:
-      security-events: write
-      contents: read
-      actions: read
 
     steps:
       - name: Checkout code
@@ -77,7 +68,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             for i in {1..30}; do
-              if curl -sf http://localhost:${{ steps.set-env.outputs.healthcheck_port }}/health > /dev/null 2>&1; then
+              if curl -sf http://localhost:${{ steps.set-env.outputs.healthcheck_port }}/api/health > /dev/null 2>&1; then
                 echo "✅ Healthcheck passou!"
                 exit 0
               fi
