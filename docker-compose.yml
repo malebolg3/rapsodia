@@ -2,7 +2,11 @@ services:
   blue:
     build:
       context: .
+<<<<<<< HEAD
       target: blue
+=======
+      target: ${BUILD_TARGET:-blue}
+>>>>>>> origin/main
     image: blue:latest
     env_file: [.env]
     environment:
@@ -18,7 +22,11 @@ services:
   red:
     build:
       context: .
+<<<<<<< HEAD
       target: red
+=======
+      target: ${BUILD_TARGET:-red}
+>>>>>>> origin/main
     image: red:latest
     env_file: [.env]
     environment:
@@ -34,7 +42,11 @@ services:
   violet:
     build:
       context: .
+<<<<<<< HEAD
       target: violet
+=======
+      target: ${BUILD_TARGET:-violet}
+>>>>>>> origin/main
     image: violet:latest
     env_file: [.env]
     environment:
@@ -50,7 +62,11 @@ services:
   silver:
     build:
       context: .
+<<<<<<< HEAD
       target: silver
+=======
+      target: ${BUILD_TARGET:-silver}
+>>>>>>> origin/main
     image: silver:latest
     env_file: [.env]
     environment:
@@ -65,4 +81,8 @@ services:
 
 networks:
   rapsodia_net:
+<<<<<<< HEAD
     driver: bridge
+=======
+    driver: overlay
+>>>>>>> origin/main

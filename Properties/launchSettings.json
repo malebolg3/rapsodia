@@ -6,11 +6,7 @@
       "dotnetRunMessages": true,
       "launchBrowser": false,
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development",
-        "POOLER_HOST": "localhost",
-        "DB_NAME": "rapsodia_dev",
-        "DB_USER_MIGRATIONS": "postgres",
-        "DB_PASSWORD": "password"
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     }
   }

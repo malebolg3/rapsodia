@@ -9,7 +9,7 @@
 *.ppk
 secrets.json
 **/dpkeys/
-data/
+!data/
 *.log
 
 # --- .NET Artifacts ---
@@ -23,6 +23,7 @@ publish/
 # --- AppSettings Security ---
 appsettings.*.json
 !appsettings.json
+Rainbow/
 Rainbow/Config/env.dev.js
 
 # --- Data & DB ---
@@ -37,7 +38,6 @@ Rainbow/Config/env.dev.js
 .vscode/
 .idea/
 .DS_Store
-Rapsodia.Tests.Unit
 
 # --- Build & Frontend ---
 node_modules/
@@ -46,6 +46,9 @@ dist/
 build/
 out/
 *.suo
+
+# --- Submodules ---
+Knowledge/Attractor
 
 # --- Native/Generated ---
 *.exe

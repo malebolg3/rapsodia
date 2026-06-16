@@ -22,6 +22,9 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("Auth")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+        
         var result = await _service.LoginAsync(request, ct);
         return result.Success ? Ok(result) : Unauthorized(result);
     }
@@ -30,6 +33,9 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("Auth")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+        
         var result = await _service.RegisterAsync(request, ct);
         if (!result.Success) return BadRequest(result);
         return CreatedAtAction(nameof(Login), null, result);
@@ -39,6 +45,9 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("Auth")]
     public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request, CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+        
         var result = await _service.RefreshTokenAsync(request, ct);
         return result.Success ? Ok(result) : Unauthorized(result);
     }
@@ -63,6 +72,9 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request, CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+        
         var result = await _service.UpdateProfileAsync(User, request, ct);
         return result.Success ? Ok(result) : BadRequest(result);
     }
@@ -72,6 +84,9 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("Auth")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+        
         var result = await _service.ChangePasswordAsync(User, request, ct);
         return result.Success ? Ok(result) : BadRequest(result);
     }
@@ -80,6 +95,9 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("Auth")]
     public async Task<IActionResult> Authorize([FromBody] AuthorizeRequest request, CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+        
         var result = await _service.RequestAuthorizationAsync(request, ct);
         return result.Success ? Ok(result) : Unauthorized(result);
     }
@@ -88,6 +106,9 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("Auth")]
     public async Task<IActionResult> Verify2FA([FromBody] Verify2FARequest request, CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+        
         var result = await _service.Verify2FAAsync(request, ct);
         return result.Success ? Ok(result) : BadRequest(result);
     }
