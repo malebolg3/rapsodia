@@ -9,6 +9,9 @@ using Rapsodia.Silver.Infrastructure.Extensions;
 using Rapsodia.Blue.Application.Interfaces;
 using Rapsodia.Blue.Application.Services;
 using Rapsodia.Blue.Application.Middleware;
+using Rapsodia.Blue.Application.Services.Olimpo;
+using Rapsodia.Blue.Application.Interfaces.Olimpo;
+using Rapsodia.Blue.Infrastructure.Repository.Olimpo;
 
 Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
@@ -40,6 +43,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSingleton<IAuthService, AuthAppService>();
 builder.Services.AddSingleton<DatabaseConfigService>();
 builder.Services.AddSingleton<TenantService>();
+builder.Services.AddScoped<IEncryptionService, EncryptionService>();
+builder.Services.AddScoped<ITotpService, TotpService>();
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+builder.Services.AddScoped<IOlimpoService, OlimpoService>();
+builder.Services.AddScoped<IOlimpoRepositoryPort, Rapsodia.Blue.Infrastructure.Repository.Olimpo.OlimpoRepository>();
 
 var authKey = Environment.GetEnvironmentVariable("AUTH_KEY") ?? throw new InvalidOperationException("AUTH_KEY obrigatoria.");
 var authIss = Environment.GetEnvironmentVariable("AUTH_ISS") ?? throw new InvalidOperationException("AUTH_ISS obrigatoria.");
@@ -173,6 +181,6 @@ app.Use(async (context, next) =>
 });
 
 var port = Environment.GetEnvironmentVariable("PORT_BLU") ?? throw new InvalidOperationException("PORT_BLU nao definida.");
-Console.WriteLine($"Blue Shield pronto em http://localhost:{port}");
-Console.WriteLine($"Swagger: http://localhost:{port}/swagger");
-await app.RunAsync($"http://localhost:{port}");
+Console.WriteLine($"Blue Shield pronto em http://0.0.0.0:{port}");
+Console.WriteLine($"Swagger: http://0.0.0.0:{port}/swagger");
+await app.RunAsync($"http://+:{port}");
