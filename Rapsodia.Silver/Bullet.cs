@@ -52,7 +52,12 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddCoreServices(builder.Configuration, builder.Environment);
-builder.Services.AddSingleton<EventPublisher>();
+var enbOrln = Environment.GetEnvironmentVariable("ENB_ORLN") ?? "false";
+if (enbOrln == "true")
+{
+    builder.Services.AddSingleton<EventPublisher>();
+    builder.Services.AddSingleton<OrleansHostedService>();
+}
 builder.Services.AddSingleton<TelemetryService>();
 builder.Services.AddHttpClient<AiClient>();
 builder.Services.AddHttpClient("AIAgent", c =>
@@ -238,7 +243,7 @@ app.Use(async (context, next) =>
     }
 });
 
-var port = Environment.GetEnvironmentVariable("PORT_SLV") ?? throw new InvalidOperationException("PORT_SLV nao definida.");
-Console.WriteLine($"Silver Bullet API iniciando em http://0.0.0.0:{port}");
-Console.WriteLine($"Swagger: http://0.0.0.0:{port}/swagger");
-await app.RunAsync($"http://0.0.0.0:{port}");
+var url = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://0.0.0.0:10000";
+Console.WriteLine($"Silver Bullet API iniciando em {url}");
+Console.WriteLine($"Swagger: {url}/swagger");
+await app.RunAsync(url);

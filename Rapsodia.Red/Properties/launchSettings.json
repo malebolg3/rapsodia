@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Violet": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5074",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

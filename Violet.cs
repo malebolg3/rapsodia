@@ -137,7 +137,7 @@ app.Use(async (context, next) =>
     }
 });
 
-var port = Environment.GetEnvironmentVariable("PORT_VLT") ?? throw new InvalidOperationException("PORT_VLT nao definida.");
-Console.WriteLine($"Violet Lab API iniciando em http://0.0.0.0:{port}");
-Console.WriteLine($"Swagger: http://0.0.0.0:{port}/swagger");
-await app.RunAsync($"http://0.0.0.0:{port}");
+var url = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://0.0.0.0:10000";
+Console.WriteLine($"Violet Lab API iniciando em {url}");
+Console.WriteLine($"Swagger: {url}/swagger");
+await app.RunAsync(url);

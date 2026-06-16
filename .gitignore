@@ -24,6 +24,7 @@ publish/
 appsettings.*.json
 !appsettings.json
 Rainbow/Config/env.dev.js
+Properties/launchSettings.json
 
 # --- Data & DB ---
 *.db

@@ -178,9 +178,9 @@ public class Sword
             }
         });
 
-        var port = Environment.GetEnvironmentVariable("PORT_RED") ?? throw new InvalidOperationException("PORT_RED nao definida.");
-        Console.WriteLine($"Red Sword API iniciando em http://0.0.0.0:{port}");
-        Console.WriteLine($"Swagger: http://0.0.0.0:{port}/swagger");        
-        await app.RunAsync($"http://0.0.0.0:{port}");
+        var url = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://0.0.0.0:10000";
+        Console.WriteLine($"Red Sword API iniciando em {url}");
+        Console.WriteLine($"Swagger: {url}/swagger");
+        await app.RunAsync(url);
     }
 }
