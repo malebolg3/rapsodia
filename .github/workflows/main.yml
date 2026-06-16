@@ -59,14 +59,14 @@ jobs:
             echo "image_tag=latest" >> $GITHUB_OUTPUT
             echo "docker_target=production" >> $GITHUB_OUTPUT
             echo "dotnet_env=Production" >> $GITHUB_OUTPUT
-            echo "deploy_path=/home/ubuntu/abitat/rapsodia" >> $GITHUB_OUTPUT
-            echo "compose_file=docker-compose.prod.yml" >> $GITHUB_OUTPUT
+            echo "deploy_path=~/th1er/abitat/Rapsodia" >> $GITHUB_OUTPUT
+            echo "compose_file=docker-compose.yml" >> $GITHUB_OUTPUT
           else
             echo "image_tag=staging" >> $GITHUB_OUTPUT
             echo "docker_target=staging" >> $GITHUB_OUTPUT
             echo "dotnet_env=Staging" >> $GITHUB_OUTPUT
-            echo "deploy_path=/home/ubuntu/malebolge/rapsodia" >> $GITHUB_OUTPUT
-            echo "compose_file=docker-compose.staging.yml" >> $GITHUB_OUTPUT
+            echo "deploy_path=~/th1er/malebolge/Rapsodia" >> $GITHUB_OUTPUT
+            echo "compose_file=docker-compose.yml" >> $GITHUB_OUTPUT
           fi
 
       - name: Build Docker image
