@@ -40,60 +40,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Definir Variáveis de Ambiente
         id: set-env
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "image_tag=latest" >> $GITHUB_OUTPUT
-            echo "docker_target=production" >> $GITHUB_OUTPUT
-            echo "dotnet_env=Production" >> $GITHUB_OUTPUT
             echo "deploy_path=~/th1er/abitat/Rapsodia" >> $GITHUB_OUTPUT
-            echo "compose_file=docker-compose.yml" >> $GITHUB_OUTPUT
+            echo "healthcheck_port=10003" >> $GITHUB_OUTPUT
           else
-            echo "image_tag=staging" >> $GITHUB_OUTPUT
-            echo "docker_target=staging" >> $GITHUB_OUTPUT
-            echo "dotnet_env=Staging" >> $GITHUB_OUTPUT
             echo "deploy_path=~/th1er/malebolge/Rapsodia" >> $GITHUB_OUTPUT
-            echo "compose_file=docker-compose.yml" >> $GITHUB_OUTPUT
+            echo "healthcheck_port=10001" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: ${{ steps.set-env.outputs.docker_target }}
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-env.outputs.image_tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      - name: Executar varredura de vulnerabilidades com Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-env.outputs.image_tag }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Enviar resultados do Trivy para GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        continue-on-error: true
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: Implantar em ${{ steps.set-env.outputs.docker_target }}
+      - name: Implantar
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.REMOTE_HOST }}
@@ -101,12 +59,15 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ steps.set-env.outputs.deploy_path }}
-            export IMAGE_TAG=${{ github.sha }}
-            docker compose -f ${{ steps.set-env.outputs.compose_file }} down
-            docker compose -f ${{ steps.set-env.outputs.compose_file }} build
-            docker compose -f ${{ steps.set-env.outputs.compose_file }} up -d
+            git pull
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              cp Dockerfile.prod Dockerfile
+            fi
+            docker compose build --no-cache
+            docker compose down
+            docker compose up -d
             sleep 5
-            docker compose -f ${{ steps.set-env.outputs.compose_file }} ps
+            docker compose ps
 
       - name: Validação de healthcheck
         uses: appleboy/ssh-action@v1.0.3
@@ -115,31 +76,24 @@ jobs:
           username: ${{ vars.REMOTE_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            if [ "${{ steps.set-env.outputs.docker_target }}" = "production" ]; then
-              PORT=10003
-            else
-              PORT=10001
-            fi
-
             for i in {1..30}; do
-              if curl -sf http://localhost:$PORT/health > /dev/null 2>&1; then
+              if curl -sf http://localhost:${{ steps.set-env.outputs.healthcheck_port }}/health > /dev/null 2>&1; then
                 echo "✅ Healthcheck passou!"
                 exit 0
               fi
               echo "Aguardando o container ficar saudável... ($i/30)"
               sleep 2
             done
-
             echo "❌ Healthcheck falhou!"
             exit 1
 
       - name: Notificar em caso de falha
         if: failure()
         run: |
-          echo "❌ Implantação falhou para ${{ steps.set-env.outputs.docker_target }}"
+          echo "❌ Implantação falhou!"
           exit 1
 
       - name: Notificar em caso de sucesso
         if: success()
         run: |
-          echo "✅ Implantação bem-sucedida para ${{ steps.set-env.outputs.docker_target }}"
+          echo "✅ Implantação bem-sucedida!"
