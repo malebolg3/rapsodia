@@ -2,16 +2,12 @@ services:
   blue:
     build:
       context: .
-<<<<<<< HEAD
-      target: blue
-=======
       target: ${BUILD_TARGET:-blue}
->>>>>>> origin/main
     image: blue:latest
     env_file: [.env]
     environment:
       ASPNETCORE_ENVIRONMENT: ${ENV}
-      ASPNETCORE_URLS: http://+:10000
+      ASPNETCORE_URLS: http://0.0.0.0:10000
     ports:
       - "${PORT_BLU}:10000"
     volumes:
@@ -22,16 +18,12 @@ services:
   red:
     build:
       context: .
-<<<<<<< HEAD
-      target: red
-=======
       target: ${BUILD_TARGET:-red}
->>>>>>> origin/main
     image: red:latest
     env_file: [.env]
     environment:
       ASPNETCORE_ENVIRONMENT: ${ENV}
-      ASPNETCORE_URLS: http://+:10000
+      ASPNETCORE_URLS: http://0.0.0.0:10000
     ports:
       - "${PORT_RED}:10000"
     volumes:
@@ -42,16 +34,12 @@ services:
   violet:
     build:
       context: .
-<<<<<<< HEAD
-      target: violet
-=======
       target: ${BUILD_TARGET:-violet}
->>>>>>> origin/main
     image: violet:latest
     env_file: [.env]
     environment:
       ASPNETCORE_ENVIRONMENT: ${ENV}
-      ASPNETCORE_URLS: http://+:10000
+      ASPNETCORE_URLS: http://0.0.0.0:10000
     ports:
       - "${PORT_VLT}:10000"
     volumes:
@@ -62,16 +50,12 @@ services:
   silver:
     build:
       context: .
-<<<<<<< HEAD
-      target: silver
-=======
       target: ${BUILD_TARGET:-silver}
->>>>>>> origin/main
     image: silver:latest
     env_file: [.env]
     environment:
       ASPNETCORE_ENVIRONMENT: ${ENV}
-      ASPNETCORE_URLS: http://+:10000
+      ASPNETCORE_URLS: http://0.0.0.0:10000
     ports:
       - "${PORT_SLV}:10000"
     volumes:
@@ -81,8 +65,4 @@ services:
 
 networks:
   rapsodia_net:
-<<<<<<< HEAD
     driver: bridge
-=======
-    driver: overlay
->>>>>>> origin/main
