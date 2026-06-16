@@ -183,4 +183,4 @@ app.Use(async (context, next) =>
 var port = Environment.GetEnvironmentVariable("PORT_BLU") ?? throw new InvalidOperationException("PORT_BLU nao definida.");
 Console.WriteLine($"Blue Shield pronto em http://0.0.0.0:{port}");
 Console.WriteLine($"Swagger: http://0.0.0.0:{port}/swagger");
-await app.RunAsync($"http://+:{port}");
+await app.RunAsync($"http://0.0.0.0:{port}");

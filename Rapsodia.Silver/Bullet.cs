@@ -241,4 +241,4 @@ app.Use(async (context, next) =>
 var port = Environment.GetEnvironmentVariable("PORT_SLV") ?? throw new InvalidOperationException("PORT_SLV nao definida.");
 Console.WriteLine($"Silver Bullet API iniciando em http://0.0.0.0:{port}");
 Console.WriteLine($"Swagger: http://0.0.0.0:{port}/swagger");
-await app.RunAsync($"http://+:{port}");
+await app.RunAsync($"http://0.0.0.0:{port}");
