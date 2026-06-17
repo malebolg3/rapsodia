@@ -36,10 +36,10 @@ jobs:
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "deploy_path=~/th1er/abitat/Rapsodia" >> $GITHUB_OUTPUT
-            echo "healthcheck_port=10003" >> $GITHUB_OUTPUT
+            echo "healthcheck_port=10007" >> $GITHUB_OUTPUT
           else
             echo "deploy_path=~/th1er/malebolge/Rapsodia" >> $GITHUB_OUTPUT
-            echo "healthcheck_port=10001" >> $GITHUB_OUTPUT
+            echo "healthcheck_port=10003" >> $GITHUB_OUTPUT
           fi
 
       - name: Implantar
@@ -51,9 +51,6 @@ jobs:
           script: |
             cd ${{ steps.set-env.outputs.deploy_path }}
             git pull
-            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-              cp Dockerfile.prod Dockerfile
-            fi
             docker compose build --no-cache
             docker compose down
             docker compose up -d
@@ -68,8 +65,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             for i in {1..30}; do
-              if curl -sf http://127.0.0.1:${{ steps.set-env.outputs.healthcheck_port }}/api/health > /dev/null 2>&1; then
-                echo "✅ Healthcheck passou!"
+              if curl -sf http://127.0.0.1:${{ steps.set-env.outputs.healthcheck_port }}/swagger/index.html > /dev/null 2>&1; then
+                echo "✅ Container respondendo!"
                 exit 0
               fi
               echo "Aguardando o container ficar saudável... ($i/30)"
