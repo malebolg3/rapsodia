@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 namespace Rapsodia.Blue.Application.DTOs;
 
 public class LoginRequest
@@ -39,4 +42,6 @@ public class AuthResultDTO
     public string Token { get; set; } = string.Empty;
     public string RefreshToken { get; set; } = string.Empty;
     public DateTime ExpiresAt { get; set; }
+    public string AllowedModules { get; set; } = string.Empty;
+
 }

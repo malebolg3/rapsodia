@@ -1,163 +1,134 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
+using Microsoft.EntityFrameworkCore;
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Application.Interfaces;
 using Rapsodia.Blue.Domain.Common;
+using Rapsodia.Blue.Domain.Entities;
+using Rapsodia.Blue.Infrastructure.Data;
 
 namespace Rapsodia.Blue.Application.Services;
 
 public class UserService : IUserService
 {
-    private readonly List<UserResultDTO> _users = new();
-    private readonly IConfiguration _cfg;
-    private readonly bool _mock;
-    private int _nextId = 1;
+    private readonly BlueDbContext _db;
 
-    public UserService(IConfiguration cfg)
+    public UserService(BlueDbContext db)
     {
-        _cfg = cfg;
-        _mock = cfg["AUTH_MOCK"] == "true" || string.IsNullOrEmpty(cfg["DB_HOST"]);
-        
-        if (_mock)
-        {
-            _users.Add(new UserResultDTO
-            {
-                Id = _nextId++,
-                Username = "admin",
-                Email = "admin@rapsodia.local",
-                FullName = "Admin User",
-                IsActive = true,
-                Roles = new List<string> { "Admin", "Analyst" },
-                CreatedAt = DateTime.UtcNow.AddDays(-30)
-            });
-        }
+        _db = db ?? throw new ArgumentNullException(nameof(db));
     }
 
     public async Task<Result<UserResultDTO>> CreateAsync(CreateUserRequest req, CancellationToken ct)
     {
-        if (_mock)
-        {
-            var user = new UserResultDTO
-            {
-                Id = _nextId++,
-                Username = req.Username,
-                Email = req.Email,
-                FullName = req.FullName,
-                IsActive = true,
-                Roles = req.RoleIds?.Select(id => $"Role_{id}").ToList() ?? new List<string> { "User" },
-                CreatedAt = DateTime.UtcNow
-            };
-            _users.Add(user);
-            return Result<UserResultDTO>.Ok(user);
-        }
+        if (await _db.Users.AnyAsync(u => u.Username == req.Username, ct))
+            return Result<UserResultDTO>.Fail("Username already exists");
 
-        await Task.Delay(10, ct);
-        return Result<UserResultDTO>.Fail("Database not configured");
+        var user = new User(req.Username, BCrypt.Net.BCrypt.HashPassword(req.Password), "Analyst", "blue");
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync(ct);
+
+        return Result<UserResultDTO>.Ok(Map(user));
     }
 
     public async Task<Result<UserResultDTO>> GetByIdAsync(int id, CancellationToken ct)
     {
-        if (_mock)
-        {
-            var user = _users.FirstOrDefault(u => u.Id == id);
-            return user is null ? Result<UserResultDTO>.Fail("User not found") : Result<UserResultDTO>.Ok(user);
-        }
-
-        await Task.Delay(10, ct);
-        return Result<UserResultDTO>.Fail("Database not configured");
+        var user = await _db.Users.FindAsync(new object[] { id }, ct);
+        return user is null ? Result<UserResultDTO>.Fail("User not found") : Result<UserResultDTO>.Ok(Map(user));
     }
 
     public async Task<Result<PagedResult<UserResultDTO>>> ListAsync(UserFilterDTO filter, CancellationToken ct)
     {
-        if (_mock)
+        var query = _db.Users.AsQueryable();
+
+        if (!string.IsNullOrEmpty(filter.Search))
+            query = query.Where(u => u.Username.Contains(filter.Search));
+
+        if (filter.IsActive.HasValue)
+            query = query.Where(u => u.DeletedAt == null == filter.IsActive.Value);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(u => u.CreatedAt)
+            .Skip((filter.Page - 1) * filter.PageSize)
+            .Take(filter.PageSize)
+            .Select(u => Map(u))
+            .ToListAsync(ct);
+
+        return Result<PagedResult<UserResultDTO>>.Ok(new PagedResult<UserResultDTO>
         {
-            var items = _users
-                .Where(u => string.IsNullOrEmpty(filter.Search) || u.Username.Contains(filter.Search) || u.Email.Contains(filter.Search))
-                .Where(u => !filter.IsActive.HasValue || u.IsActive == filter.IsActive.Value)
-                .ToList();
-
-            return Result<PagedResult<UserResultDTO>>.Ok(new PagedResult<UserResultDTO>
-            {
-                Items = items.Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize).ToList(),
-                TotalCount = items.Count,
-                Page = filter.Page,
-                PageSize = filter.PageSize
-            });
-        }
-
-        await Task.Delay(10, ct);
-        return Result<PagedResult<UserResultDTO>>.Fail("Database not configured");
+            Items = items,
+            TotalCount = total,
+            Page = filter.Page,
+            PageSize = filter.PageSize
+        });
     }
 
     public async Task<Result<UserResultDTO>> UpdateAsync(int id, EditUserRequest req, CancellationToken ct)
     {
-        if (_mock)
+        var user = await _db.Users.FindAsync(new object[] { id }, ct);
+        if (user is null) return Result<UserResultDTO>.Fail("User not found");
+
+        if (req.Email != null) user.SetEmail(req.Email);
+        if (req.FullName != null) user.SetFullName(req.FullName);
+        if (req.Role != null && user.Role != "Admin") user.SetRole(req.Role);
+        if (req.AllowedModules != null) user.SetAllowedModules(req.AllowedModules);
+        if (req.IsActive.HasValue)
         {
-            var user = _users.FirstOrDefault(u => u.Id == id);
-            if (user is null) return Result<UserResultDTO>.Fail("User not found");
-
-            if (req.Email != null) user.Email = req.Email;
-            if (req.FullName != null) user.FullName = req.FullName;
-            if (req.IsActive.HasValue) user.IsActive = req.IsActive.Value;
-
-            return Result<UserResultDTO>.Ok(user);
+            if (req.IsActive.Value) user.Activate();
+            else user.Deactivate();
         }
 
-        await Task.Delay(10, ct);
-        return Result<UserResultDTO>.Fail("Database not configured");
+        await _db.SaveChangesAsync(ct);
+        return Result<UserResultDTO>.Ok(Map(user));
     }
 
-    public Task<Result<bool>> DisableAsync(int id, CancellationToken ct)
+    public async Task<Result<bool>> DisableAsync(int id, CancellationToken ct)
     {
-        if (_mock)
-        {
-            var user = _users.FirstOrDefault(u => u.Id == id);
-            if (user is null) return Task.FromResult(Result<bool>.Fail("User not found"));
-            user.IsActive = false;
-            return Task.FromResult(Result<bool>.Ok(true));
-        }
-
-        return Task.FromResult(Result<bool>.Ok(true));
+        var user = await _db.Users.FindAsync(new object[] { id }, ct);
+        if (user is null) return Result<bool>.Fail("User not found");
+        if (user.Role == "Admin") return Result<bool>.Fail("Cannot disable the Admin");
+        user.Deactivate();
+        await _db.SaveChangesAsync(ct);
+        return Result<bool>.Ok(true);
     }
 
-    public Task<Result<bool>> EnableAsync(int id, CancellationToken ct)
+    public async Task<Result<bool>> EnableAsync(int id, CancellationToken ct)
     {
-        if (_mock)
-        {
-            var user = _users.FirstOrDefault(u => u.Id == id);
-            if (user is null) return Task.FromResult(Result<bool>.Fail("User not found"));
-            user.IsActive = true;
-            return Task.FromResult(Result<bool>.Ok(true));
-        }
-
-        return Task.FromResult(Result<bool>.Ok(true));
+        var user = await _db.Users.FindAsync(new object[] { id }, ct);
+        if (user is null) return Result<bool>.Fail("User not found");
+        user.Activate();
+        await _db.SaveChangesAsync(ct);
+        return Result<bool>.Ok(true);
     }
 
-    public Task<Result<UserResultDTO>> AddRoleAsync(int id, AddRoleRequest req, CancellationToken ct)
+    public async Task<Result<UserResultDTO>> SetPermissionsAsync(int id, string role, string allowedModules, CancellationToken ct)
     {
-        if (_mock)
-        {
-            var user = _users.FirstOrDefault(u => u.Id == id);
-            if (user is null) return Task.FromResult(Result<UserResultDTO>.Fail("User not found"));
+        var user = await _db.Users.FindAsync(new object[] { id }, ct);
+        if (user is null) return Result<UserResultDTO>.Fail("User not found");
 
-            var roleName = $"Role_{req.RoleId}";
-            if (!user.Roles.Contains(roleName))
-                user.Roles.Add(roleName);
+        if (user.Role == "Admin" && role != "Admin")
+            return Result<UserResultDTO>.Fail("The Admin cannot be demoted.");
 
-            return Task.FromResult(Result<UserResultDTO>.Ok(user));
-        }
+        if (role == "Admin")
+            return Result<UserResultDTO>.Fail("There can only be one Admin.");
 
-        return Task.FromResult(Result<UserResultDTO>.Fail("Database not configured"));
+        user.SetRole(role);
+        user.SetAllowedModules(allowedModules);
+        await _db.SaveChangesAsync(ct);
+
+        return Result<UserResultDTO>.Ok(Map(user));
     }
 
-    public Task<Result<bool>> RemoveRoleAsync(int id, int roleId, CancellationToken ct)
+    private static UserResultDTO Map(User user) => new UserResultDTO
     {
-        if (_mock)
-        {
-            var user = _users.FirstOrDefault(u => u.Id == id);
-            if (user is null) return Task.FromResult(Result<bool>.Fail("User not found"));
-            user.Roles.RemoveAll(r => r == $"Role_{roleId}");
-            return Task.FromResult(Result<bool>.Ok(true));
-        }
-
-        return Task.FromResult(Result<bool>.Ok(true));
-    }
+        Id = user.Id,
+        Username = user.Username,
+        Email = user.Email,
+        FullName = user.FullName,
+        IsActive = user.DeletedAt == null,
+        Roles = new List<string> { user.Role },
+        AllowedModules = user.AllowedModules,
+        CreatedAt = user.CreatedAt
+    };
 }

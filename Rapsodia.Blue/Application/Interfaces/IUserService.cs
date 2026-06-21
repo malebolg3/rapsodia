@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Domain.Common;
 
@@ -11,6 +14,5 @@ public interface IUserService
     Task<Result<UserResultDTO>> UpdateAsync(int id, EditUserRequest request, CancellationToken ct);
     Task<Result<bool>> DisableAsync(int id, CancellationToken ct);
     Task<Result<bool>> EnableAsync(int id, CancellationToken ct);
-    Task<Result<UserResultDTO>> AddRoleAsync(int id, AddRoleRequest request, CancellationToken ct);
-    Task<Result<bool>> RemoveRoleAsync(int id, int roleId, CancellationToken ct);
+    Task<Result<UserResultDTO>> SetPermissionsAsync(int id, string role, string allowedModules, CancellationToken ct);
 }

@@ -1,8 +1,12 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
+using Oracle.ManagedDataAccess.Client;
 using Rapsodia.Blue.Infrastructure.Data;
 
 namespace Rapsodia.Blue.Infrastructure.Configuration;
@@ -18,7 +22,19 @@ public static class BlueServiceExtensions
         var user = Environment.GetEnvironmentVariable("DB_USER");
         var pass = Environment.GetEnvironmentVariable("DB_PASS");
 
-        var connectionString = $"User Id={user};Password={pass};Data Source={host}:{port}/{name}";
+        var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION") 
+            ?? $"User Id={user};Password={pass};Data Source={host}:{port}/{name}";
+            
+        var tnsAdmin = Environment.GetEnvironmentVariable("TNS_ADMIN") ?? "/app/wallet";
+        Console.WriteLine($"[DB] INICIANDO AddBlueDatabase com provider={provider}, TNS_ADMIN={tnsAdmin}");
+        Console.WriteLine($"[DB] ConnectionString: {connectionString}");
+
+        if (provider.Equals("Oracle", StringComparison.OrdinalIgnoreCase))
+        {
+            OracleConfiguration.TnsAdmin = tnsAdmin;
+            OracleConfiguration.WalletLocation = tnsAdmin;
+            Console.WriteLine("[DB] OracleConfiguration definida");
+        }
 
         services.AddDbContext<BlueDbContext>(options =>
         {

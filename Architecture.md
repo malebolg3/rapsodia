@@ -1,136 +1,127 @@
-# Arquitetura Rapsodia
+# Arquitetura Rapsodia (Malebolge Engine)
 
 ## Princípios
 
-- **Hexagonal:** Domínio isolado de infraestrutura
-- **DDD:** Linguagem ubíqua em todas as camadas
-- **DevSecOps:** Segredos protegidos, hardening por padrão
+- **Hexagonal:** Domínio purificado e 100% isolado de detalhes de infraestrutura.
+- **DDD (Domain-Driven Design):** Linguagem ubíqua expressa em código nas quatro divisões do ecossistema.
+- **DevSecOps:** Hardening de rede via Docker, imagens Jammy controladas e isolamento de portas.
+- **Open Source (AGPLv3):** Extensível, auditável e desenhado para colaboração em segurança cibernética.
+
+---
+
+## Papel no Ecossistema
+
+**Malebolge** é o codinome do ambiente/projeto de infraestrutura que orquestra a engine do **Rapsodia** (o backend do ecossistema **aBitat**). Ele atua como o motor autofágico de segurança: as capacidades ofensivas coletam inteligência para atualizar dinamicamente as defesas do sistema principal.
+
+---
 
 ## Hexagonal Architecture (Ports & Adapters)
+┌────────────────────────────────────────────────────────┐
+                        │                     DOMÍNIO PURO                       │
+                        │                  (Rapsodia.Domain)                     │
+                        │                                                        │
+                        │   • O que é um ataque?       • Como mitigar ameaças?   │
+                        │   • Quando conter incidentes? • Como simular cenários? │
+                        └──────────────────────────┬─────────────────────────────┘
+                                                   │
+                            ┌──────────────────────┴──────────────────────┐
+                            ▼                                             ▼
+                    [ Portas Primárias ]            [ Portas Secundárias ]
+                   (Rapsodia.Presentation)         (Rapsodia.Infrastructure)
+                   ┌───────────────────────────┐   ┌───────────────────────────┐
+                   │ • REST API / SignalR Hubs │   │ • Oracle Autonomous DB    │
+                   │ • HTMX / Web Frontends    │   │ • Redis Cache / Valkey    │
+                   │ • CLI Automation Tools    │   │ • Microsoft Orleans Silos │
+                   │ • Test Suites / QA-Argus  │   │ • OpenTelemetry / Grafana │
+                   └───────────────────────────┘   └───────────────────────────┘
 
-```
-┌──────────────────────┐
-│  DOMÍNIO PURO        │
-│  (Regras de Negócio) │
-│                      │
-│  • O que é ataque?   │
-│  • Quando bloquear?  │
-│  • Como classificar? │
-└──────┬────────┬──────┘
-       │        │
-   ┌───▼────┐  ┌───▼──────────┐
-   │ Portas │  │ Portas       │
-   │Primárias│ │Secundárias   │
-   ├────────┤  ├──────────────┤
-   │REST API│  │PostgreSQL    │
-   │GraphQL │  │Oracle        │
-   │gRPC    │  │Redis         │
-   │CLI     │  │Grafana       │
-   │Tests   │  │Obsidian      │
-   └────────┘  └──────────────┘
-```
+> **Garantia de Hardening:** O isolamento via acoplamento frouxo permite que os adaptadores de infraestrutura lidem com segredos e conexões seguras sem vazar vetores para o domínio corporativo.
 
-**Vantagem:** Trocar Oracle por PostgreSQL = 2 horas, zero mudanças no domínio.
+---
 
 ## Domain-Driven Design (DDD)
 
 ### Linguagem Ubíqua
 
-Falamos a linguagem do domínio em TODA camada de código:
+O código reflete a realidade tática das operações Blue Team e Red Team do ecossistema:
 
-| Conceito | Realização | Significado |
-|----------|-----------|-------------|
-| `Honeypot.deceive()` | Entidade | Enganar atacante |
-| `Incident.contain()` | Agregado | Conter incidente |
-| `ThreatActor.analyze()` | Serviço Domínio | Analisar ameaça |
-| `Lab.provision()` | Agregado | Criar laboratório |
+| Conceito | Realização | Módulo Associado | Significado Tático |
+| :--- | :--- | :--- | :--- |
+| Honeypot.Deceive() | Entidade | 🔵 Gerent | Enganar e capturar ações do atacante. |
+| Incident.Contain() | Agregado | 🔵 Gerent | Conter a propagação de uma intrusão detectada. |
+| Push.Attack() | Agregado | 🔴 Push | Disparar força ofensiva (scan/exploit) autorizada. |
+| Lab.Provision() | Agregado | 🟣 Limbo | Criar ambientes efêmeros em containers (Kali, DVWA). |
+| In_telektus.Process() | Serviço de Domínio | ⚪ In_telectus | Orquestração de agentes via atores virtuais Orleans. |
 
 ```csharp
-// ❌ Ruim: Linguagem técnica
+// ❌ Código Acoplado / Genérico
 var sql = "INSERT INTO alerts VALUES (...)";
 
-// ✅ Bom: Linguagem ubíqua
+// ✅ Alinhado à Linguagem Ubíqua e DDD
 var alert = new SecurityAlert(
     severity: ThreatLevel.Critical,
     source: "Honeypot SSH",
     action: AlertAction.BlockImmediately
 );
 _securityContext.RaiseAlert(alert);
-```
 
-### Camadas do Projeto
-
-```
+Estrutura de Camadas (Rapsodia.sln)
 Rapsodia/
-├── 🧠 Domain (Rapsodia.Domain)
-│   ├── Entities/        # Honeypot, Incident, ThreatActor
-│   ├── ValueObjects/    # IPAddress, ThreatLevel, AlertSeverity
-│   ├── Services/        # ThreatAnalysisService, BlockDecisionService
-│   └── Interfaces/      # IThreatRepository, IAlertDispatcher
+├── 🧠 Rapsodia.Domain/
+│   ├── Entities/          # Honeypot.cs, Incident.cs, ThreatActor.cs
+│   ├── ValueObjects/      # IPAddress.cs, ThreatLevel.cs, PortNumber.cs
+│   ├── Services/          # ThreatAnalysisService.cs, ExploitOrchestrator.cs
+│   └── Interfaces/        # IThreatRepository.cs, IMsfRpcClient.cs
 │
-├── 🔧 Application (Rapsodia.Application)
-│   ├── UseCases/        # DeployHoneypotUseCase, AnalyzeThreatUseCase
-│   ├── DTOs/            # HoneypotDto, AlertDto
-│   └── Interfaces/      # IAuthService, ITelemetryService
+├── 🔧 Rapsodia.Application/
+│   ├── UseCases/          # DeployHoneypotUseCase.cs, ExecuteScanUseCase.cs
+│   ├── DTOs/              # AttackPatternDto.cs, TelemetryPayload.cs
+│   └── Interfaces/        # IOrleansOrchestrator.cs, ITelemetryService.cs
 │
-├── 🔌 Infrastructure (Rapsodia.Infrastructure)
-│   ├── Persistence/     # OracleDbContext, RedisCache
-│   ├── Adapters/        # GrafanaAdapter, ObsidianAdapter
-│   └── Services/        # EmailNotificationService
+├── 🔌 Rapsodia.Infrastructure/
+│   ├── Persistence/       # OracleDbContext.cs, RedisCacheService.cs
+│   ├── Adapters/          # MetasploitRpcAdapter.cs, ObsidianGraphAdapter.cs
+│   └── Telemetry/         # OpenTelemetrySetup.cs, GrafanaMetrics.cs
 │
-└── 🌐 Presentation (Rapsodia.Presentation)
-    ├── Controllers/     # HoneypotController, LabController
-    ├── Hubs/            # SignalR para real-time
-    └── Middleware/      # RateLimit, TenantResolver
-```
+└── 🌐 Rapsodia.Presentation/
+    ├── Controllers/       # AttackController.cs, LabController.cs
+    ├── Hubs/              # SignalR Real-Time Incident Streamdv
+    └── Middleware/        # RateLimitingMiddleware, DevSecOpsHardeningMiddleware
 
-**Regra de Ouro:** Setas de dependência SEMPRE apontam para dentro.
-- Domain ≠ conhece Infrastructure
-- Infrastructure = conhece Domain
-- Presentation = conhece Application
-- Application = conhece Domain
+    Regra de Ouro: As dependências do projeto apontam estritamente para dentro. Domain possui dependência zero de bibliotecas externas de infraestrutura.
+    
+    Padrões Táticos Aggregate Roots C#
+    
+    public class Lab
 
-### Padrões Táticos
-
-#### Aggregate Roots
-```csharp
-public class Lab
 {
     public LabId Id { get; }
     public LabStatus Status { get; private set; }
-    private List<Container> _containers;
+    private readonly List<Container> _containers = new();
     
     public void Provision(Template template)
     {
         if (Status != LabStatus.Ready)
-            throw new DomainException("Lab não pronto");
+            throw new DomainException("Laboratório não inicializado.");
+            
         _containers.Add(Container.FromTemplate(template));
         Status = LabStatus.Running;
     }
 }
-```
-
-#### Value Objects (Imutáveis e Validados)
-```csharp
-public class IPAddress : ValueObject
+Value Objects (Imutáveis e Validados)C#public class IPAddress : ValueObject
 {
     public string Value { get; }
     
     public IPAddress(string ip)
     {
         if (!IsValid(ip))
-            throw new DomainException($"IP inválido: {ip}");
+            throw new DomainException($"IP Inválido: {ip}");
         Value = ip;
     }
     
-    public bool IsPrivate() => Value.StartsWith("192.168.") || 
-                                Value.StartsWith("10.");
+    public bool IsPrivate() => Value.StartsWith("192.168.") || Value.StartsWith("10.");
 }
-```
-
-#### Domain Events
-```csharp
-public class HoneypotBreachedEvent : IDomainEvent
+Domain Events & Decoupled HandlersC#public class HoneypotBreachedEvent : IDomainEvent
 {
     public HoneypotId HoneypotId { get; }
     public IPAddress AttackerIP { get; }
@@ -141,74 +132,18 @@ public class AutoBlockOnBreachHandler : INotificationHandler<HoneypotBreachedEve
 {
     public Task Handle(HoneypotBreachedEvent evt, CancellationToken ct)
     {
-        _firewall.Block(evt.AttackerIP);
-        _notificationService.Send($"IP {evt.AttackerIP} bloqueado");
+        _firewallAdapter.Block(evt.AttackerIP);
+        _telemetry.TrackMitigation(evt.HoneypotId, evt.AttackerIP);
         return Task.CompletedTask;
     }
 }
-```
 
-#### Specification Pattern (Regras)
-```csharp
-var rule = new BruteForceSpecification(
-    maxAttempts: 10,
-    timeWindow: TimeSpan.FromMinutes(5)
-);
-
-if (rule.IsSatisfiedBy(ipAddress))
-    _firewall.Block(ipAddress);
-```
-
-#### Domain vs Application Services
-```csharp
-// Domain Service (lógica pura, sem I/O)
-public class ThreatClassifier
-{
-    public ThreatLevel Classify(AttackPattern pattern) { ... }
-}
-
-// Application Service (orquestra Domain + Infra)
-public class AnalyzeThreatUseCase
-{
-    public async Task<Alert> Execute(ThreatData data)
-    {
-        var level = _classifier.Classify(data.Pattern);  // Domain
-        await _alertRepo.Save(alert);                     // Infra
-        await _notification.Send(alert);                  // Infra
-    }
-}
-```
-
-## Vantagens Práticas
-
-| Cenário | Tempo | Mudanças no Domain |
-|---------|-------|--------------------|
-| Trocar Oracle → PostgreSQL | 2h | 0 |
-| Trocar REST → gRPC | 4h | 0 |
-| Adicionar Modo "Vovó" | 1d | Reutiliza Entities |
-| Escalar para 10k empresas (multi-tenant) | 3d | 0 |
-
-## Teste de Estresse
-
-```bash
-# Desafio: Trocar TODO o Storage Layer
-git checkout experiment/md-storage
-dotnet test
-
-# Esperado:
-# ✅ Domain:         147/147 ✓
-# ✅ Application:     89/89  ✓
-# ⚠️  Infrastructure:  45/89  (só adapters novos)
-# Tempo: 3 horas
-# Alterações Domain: 0
-```
-
-Isso prova: arquitetura correta permite trocar banco por arquivos (não recomendado, mas possível).
-
-## Posicionamento Técnico
-
-Essa arquitetura comunica:
-
-- **Para devs:** "Código sério, não spaghetti"
-- **Para empresas:** "Qualidade enterprise"
-- **Para investidores:** "Fundação escalável"
+---
+| Cenário de Evolução / Manutenção | Tempo Estimado | Impacto no Domínio Puro | Camada Afetada |
+| :--- | :--- | :--- | :--- |
+| Substituir Oracle por PostgreSQL | 2 horas | Zero | Infrastructure.Persistence |
+| Migrar endpoints REST para HTMX | 4 horas | Zero | Presentation |
+| Acoplar engine do Metasploit Framework | 1 dia | Zero (Apenas interface) | Infrastructure.Adapters |
+| Escalar processamento de logs via Orleans | 3 dias | Zero | Infrastructure.Telemetry |
+| Atualizar infraestrutura Nginx para Caddy | 2 horas | Zero | Docker / DevOps Only |
+| Injetar Agentes Inteligentes no SOC | 3 dias | Reutiliza Entidades | Application / Domain |

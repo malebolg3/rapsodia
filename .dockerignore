@@ -1,0 +1,13 @@
+**/bin
+**/obj
+**/.vs
+**/.vscode
+**/.git
+**/node_modules
+**/*.log
+**/secrets.json
+.env
+.env.*
+!.env.example
+Knowledge
+Rainbow

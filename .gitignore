@@ -7,7 +7,7 @@
 *.crt
 *.pub
 *.ppk
-secrets.json
+global.json
 **/dpkeys/
 !data/
 *.log

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 using Rapsodia.Silver.Application.DTOs;
 
 namespace Rapsodia.Silver.Domain.Interfaces;

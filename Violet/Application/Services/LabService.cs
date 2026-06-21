@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 using Rapsodia.Violet.Application.DTOs;
 using Rapsodia.Violet.Application.Interfaces;
 using Rapsodia.Violet.Domain.Common;

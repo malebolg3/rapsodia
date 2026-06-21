@@ -1,0 +1,89 @@
+name: malebolge
+services:
+  blue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: blue
+    image: blue:latest
+    container_name: male-blue
+    env_file: [.env]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ENV}
+      - ASPNETCORE_URLS=http://0.0.0.0:10000
+      - TNS_ADMIN=/app/wallet
+      - ORACLE_HOME=/app/wallet
+    ports:
+      - "10001:10000"
+    volumes:
+      - /home/ubuntu/th1er/ops/wallet_rainbow:/app/wallet
+    networks:
+      - malebolge_net
+    restart: unless-stopped
+
+  red:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: red
+    image: red:latest
+    container_name: male-red
+    env_file: [.env]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ENV}
+      - ASPNETCORE_URLS=http://0.0.0.0:10000
+      - TNS_ADMIN=/app/wallet
+      - ORACLE_HOME=/app/wallet
+    ports:
+      - "10002:10000"
+    volumes:
+      - /home/ubuntu/th1er/ops/wallet_rainbow:/app/wallet
+    networks:
+      - malebolge_net
+    restart: unless-stopped
+
+  violet:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: violet
+    image: violet:latest
+    container_name: male-violet
+    env_file: [.env]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ENV}
+      - ASPNETCORE_URLS=http://0.0.0.0:10000
+      - TNS_ADMIN=/app/wallet
+      - ORACLE_HOME=/app/wallet
+    ports:
+      - "10003:10000"
+    volumes:
+      - /home/ubuntu/th1er/ops/wallet_rainbow:/app/wallet
+    networks:
+      - malebolge_net
+    restart: unless-stopped
+
+  silver:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: silver
+    image: silver:latest
+    container_name: male-silver
+    env_file: [.env]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ENV}
+      - ASPNETCORE_URLS=http://0.0.0.0:10000
+      - TNS_ADMIN=/app/wallet
+      - ORACLE_HOME=/app/wallet
+    ports:
+      - "10004:10000"
+    volumes:
+      - /home/ubuntu/th1er/ops/wallet_rainbow:/app/wallet
+    networks:
+      - malebolge_net
+    restart: unless-stopped
+
+networks:
+  malebolge_net:
+    external: true

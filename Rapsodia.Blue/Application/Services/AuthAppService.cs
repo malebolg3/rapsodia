@@ -1,142 +1,145 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Mail;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Application.DTOs.Auth;
 using Rapsodia.Blue.Application.Interfaces;
 using Rapsodia.Blue.Domain.Common;
+using Rapsodia.Blue.Domain.Entities;
+using Rapsodia.Blue.Infrastructure.Data;
 
 namespace Rapsodia.Blue.Application.Services;
 
 public class AuthAppService : IAuthService
 {
-    private readonly List<UserResultDTO> _users = new();
+    private readonly BlueDbContext _db;
     private readonly Dictionary<string, (string Code, DateTime Expires, AuthorizeRequest Request)> _pending2FA = new();
     private readonly List<SessionInfo> _activeSessions = new();
     private readonly Random _random = new();
-    private int _nextId = 1;
 
-    public AuthAppService()
+    public AuthAppService(BlueDbContext db)
     {
-        _users.Add(new UserResultDTO
-        {
-            Id = _nextId++,
-            Username = "admin",
-            Email = "admin@rapsodia.local",
-            FullName = "Admin User",
-            IsActive = true,
-            Roles = new List<string> { "Admin" },
-            CreatedAt = DateTime.UtcNow.AddDays(-30)
-        });
+        _db = db ?? throw new ArgumentNullException(nameof(db));
     }
 
-    public Task<Result<AuthResultDTO>> LoginAsync(LoginRequest req, CancellationToken ct)
+    public async Task<Result<AuthResultDTO>> LoginAsync(LoginRequest req, CancellationToken ct)
     {
-        var user = _users.FirstOrDefault(u => u.Username == req.Username && u.IsActive);
-        if (user is null || req.Password != "admin123")
-            return Task.FromResult(Result<AuthResultDTO>.Fail("Invalid credentials"));
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == req.Username && u.DeletedAt == null, ct);
+        if (user is null || !VerifyPassword(req.Password, user.PasswordHash))
+            return Result<AuthResultDTO>.Fail("Invalid credentials");
 
         var token = GenerateToken(user);
-        return Task.FromResult(Result<AuthResultDTO>.Ok(token));
+        return Result<AuthResultDTO>.Ok(token);
     }
 
-    public Task<Result<AuthResultDTO>> RegisterAsync(RegisterRequest req, CancellationToken ct)
+    public async Task<Result<AuthResultDTO>> RegisterAsync(RegisterRequest req, CancellationToken ct)
     {
-        var user = new UserResultDTO
-        {
-            Id = _nextId++,
-            Username = req.Username,
-            Email = req.Email,
-            FullName = req.FullName,
-            IsActive = true,
-            Roles = new List<string> { "User" },
-            CreatedAt = DateTime.UtcNow
-        };
-        _users.Add(user);
+        if (await _db.Users.AnyAsync(u => u.Username == req.Username, ct))
+            return Result<AuthResultDTO>.Fail("Username already exists");
+
+        var user = new User(req.Username, HashPassword(req.Password), "Analyst", "blue");
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync(ct);
 
         var token = GenerateToken(user);
-        return Task.FromResult(Result<AuthResultDTO>.Ok(token));
+        return Result<AuthResultDTO>.Ok(token);
     }
 
-    public Task<Result<AuthResultDTO>> RefreshTokenAsync(RefreshTokenRequest req, CancellationToken ct)
+    public async Task<Result<AuthResultDTO>> RefreshTokenAsync(RefreshTokenRequest req, CancellationToken ct)
     {
         var principal = ValidateToken(req.Token);
         if (principal is null)
-            return Task.FromResult(Result<AuthResultDTO>.Fail("Invalid token"));
+            return Result<AuthResultDTO>.Fail("Invalid token");
 
         var userId = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        var user = _users.FirstOrDefault(u => u.Id == userId);
-        if (user is null)
-            return Task.FromResult(Result<AuthResultDTO>.Fail("User not found"));
+        var user = await _db.Users.FindAsync(new object[] { userId }, ct);
+        if (user is null || user.DeletedAt != null)
+            return Result<AuthResultDTO>.Fail("User not found");
 
         var token = GenerateToken(user);
-        return Task.FromResult(Result<AuthResultDTO>.Ok(token));
+        return Result<AuthResultDTO>.Ok(token);
     }
 
     public Task<Result<bool>> LogoutAsync(ClaimsPrincipal user, CancellationToken ct)
         => Task.FromResult(Result<bool>.Ok(true));
 
-    public Task<Result<AuthResultDTO>> GetCurrentUserAsync(ClaimsPrincipal user, CancellationToken ct)
+    public async Task<Result<AuthResultDTO>> GetCurrentUserAsync(ClaimsPrincipal principal, CancellationToken ct)
     {
-        var userId = int.Parse(user.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        var username = user.FindFirst(ClaimTypes.Name)!.Value;
-        var usr = _users.FirstOrDefault(u => u.Id == userId);
+        var userId = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(new object[] { userId }, ct);
         
-        return Task.FromResult(usr is null 
+        return user is null || user.DeletedAt != null
             ? Result<AuthResultDTO>.Fail("User not found") 
             : Result<AuthResultDTO>.Ok(new AuthResultDTO
             {
-                UserId = usr.Id,
-                Username = usr.Username,
+                UserId = user.Id,
+                Username = user.Username,
                 Token = "",
                 RefreshToken = "",
-                ExpiresAt = DateTime.UtcNow
-            }));
+                ExpiresAt = DateTime.UtcNow,
+                AllowedModules = user.AllowedModules
+            });
     }
 
-    public Task<Result<AuthResultDTO>> UpdateProfileAsync(ClaimsPrincipal user, UpdateProfileRequest req, CancellationToken ct)
+    public async Task<Result<AuthResultDTO>> UpdateProfileAsync(ClaimsPrincipal principal, UpdateProfileRequest req, CancellationToken ct)
     {
-        var userId = int.Parse(user.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        var usr = _users.FirstOrDefault(u => u.Id == userId);
-        if (usr is null) return Task.FromResult(Result<AuthResultDTO>.Fail("User not found"));
+        var userId = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(new object[] { userId }, ct);
+        if (user is null || user.DeletedAt != null) return Result<AuthResultDTO>.Fail("User not found");
         
-        if (req.Email != null) usr.Email = req.Email;
-        if (req.FullName != null) usr.FullName = req.FullName;
+        if (!string.IsNullOrEmpty(req.Email)) user.SetEmail(req.Email);
+        if (!string.IsNullOrEmpty(req.FullName)) user.SetFullName(req.FullName);
+        await _db.SaveChangesAsync(ct);
         
-        return Task.FromResult(Result<AuthResultDTO>.Ok(new AuthResultDTO
+        return Result<AuthResultDTO>.Ok(new AuthResultDTO
         {
-            UserId = usr.Id,
-            Username = usr.Username,
+            UserId = user.Id,
+            Username = user.Username,
             Token = "",
             RefreshToken = "",
             ExpiresAt = DateTime.UtcNow
-        }));
+        });
     }
 
-    public Task<Result<bool>> ChangePasswordAsync(ClaimsPrincipal user, ChangePasswordRequest req, CancellationToken ct)
-        => Task.FromResult(Result<bool>.Ok(true));
-
-    public Task<Result<AuthorizeResponse>> RequestAuthorizationAsync(AuthorizeRequest req, CancellationToken ct)
+    public async Task<Result<bool>> ChangePasswordAsync(ClaimsPrincipal principal, ChangePasswordRequest req, CancellationToken ct)
     {
-        var user = _users.FirstOrDefault(u => u.Username == req.Username && u.IsActive);
-        if (user is null || req.Password != "admin123")
-            return Task.FromResult(Result<AuthorizeResponse>.Fail("Invalid credentials"));
+        var userId = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(new object[] { userId }, ct);
+        if (user is null || user.DeletedAt != null) return Result<bool>.Fail("User not found");
+
+        if (!VerifyPassword(req.CurrentPassword, user.PasswordHash))
+            return Result<bool>.Fail("Current password is incorrect");
+
+        user.SetPasswordHash(HashPassword(req.NewPassword));
+        await _db.SaveChangesAsync(ct);
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<AuthorizeResponse>> RequestAuthorizationAsync(AuthorizeRequest req, CancellationToken ct)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == req.Username && u.DeletedAt == null, ct);
+        if (user is null || !VerifyPassword(req.Password, user.PasswordHash))
+            return Result<AuthorizeResponse>.Fail("Invalid credentials");
 
         var code = _random.Next(100000, 999999).ToString();
         _pending2FA[req.Username] = (code, DateTime.UtcNow.AddMinutes(5), req);
         Console.WriteLine($"2FA CODE for {req.Username}: {code}");
         
-        _ = Task.Run(() => SendEmailCode(user.Email, code));
+        _ = Task.Run(() => SendEmailCode(user.Username + "@rapsodia.local", code), ct);
         
-        return Task.FromResult(Result<AuthorizeResponse>.Ok(new AuthorizeResponse
+        return Result<AuthorizeResponse>.Ok(new AuthorizeResponse
         {
             Requires2FA = true,
             Message = "2FA code sent to email and console.",
             Username = req.Username
-        }));
+        });
     }
 
     public Task<Result<SessionInfo>> Verify2FAAsync(Verify2FARequest req, CancellationToken ct)
@@ -155,7 +158,7 @@ public class AuthAppService : IAuthService
         
         _pending2FA.Remove(req.Username);
         
-        var user = _users.First(u => u.Username == req.Username);
+        var user = _db.Users.First(u => u.Username == req.Username && u.DeletedAt == null);
         var token = GenerateScopedToken(user, pending.Request.Service, pending.Request.Scope, pending.Request.ExpiresIn);
         
         var session = new SessionInfo
@@ -191,7 +194,17 @@ public class AuthAppService : IAuthService
         return Task.FromResult(Result<bool>.Ok(true));
     }
 
-    private AuthResultDTO GenerateToken(UserResultDTO user)
+    private static string HashPassword(string password)
+    {
+        return BCrypt.Net.BCrypt.HashPassword(password);
+    }
+
+    private static bool VerifyPassword(string password, string hash)
+    {
+        return BCrypt.Net.BCrypt.Verify(password, hash);
+    }
+
+    private AuthResultDTO GenerateToken(User user)
     {
         var (authKey, authIss, authAud) = GetAuthConfig();
 
@@ -202,9 +215,9 @@ public class AuthAppService : IAuthService
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Email, user.Email)
+            new(ClaimTypes.Role, user.Role),
+            new("allowed_modules", user.AllowedModules)
         };
-        claims.AddRange(user.Roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
         var expires = DateTime.UtcNow.AddHours(8);
         
@@ -226,11 +239,12 @@ public class AuthAppService : IAuthService
             Username = user.Username,
             Token = handler.WriteToken(token),
             RefreshToken = Guid.NewGuid().ToString("N"),
-            ExpiresAt = expires
+            ExpiresAt = expires,
+            AllowedModules = user.AllowedModules
         };
     }
 
-    private AuthResultDTO GenerateScopedToken(UserResultDTO user, string service, string scope, string expiresIn)
+    private AuthResultDTO GenerateScopedToken(User user, string service, string scope, string expiresIn)
     {
         var (authKey, authIss, authAud) = GetAuthConfig();
         
@@ -250,9 +264,10 @@ public class AuthAppService : IAuthService
             new(ClaimTypes.Name, user.Username),
             new("scope", $"{service}:{scope}"),
             new("service", service),
-            new("authorized_by", "admin")
+            new("authorized_by", "admin"),
+            new(ClaimTypes.Role, user.Role),
+            new("allowed_modules", user.AllowedModules)
         };
-        claims.AddRange(user.Roles.Select(r => new Claim(ClaimTypes.Role, r)));
         
         var expires = DateTime.UtcNow.AddHours(hours);
         
@@ -274,7 +289,8 @@ public class AuthAppService : IAuthService
             Username = user.Username,
             Token = handler.WriteToken(token),
             RefreshToken = Guid.NewGuid().ToString("N"),
-            ExpiresAt = expires
+            ExpiresAt = expires,
+            AllowedModules = user.AllowedModules
         };
     }
 

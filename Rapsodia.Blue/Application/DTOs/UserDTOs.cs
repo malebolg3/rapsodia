@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 namespace Rapsodia.Blue.Application.DTOs;
 
 public class CreateUserRequest
@@ -14,6 +17,8 @@ public class EditUserRequest
     public string? Email { get; set; }
     public string? FullName { get; set; }
     public bool? IsActive { get; set; }
+    public string? Role { get; set; }
+    public string? AllowedModules { get; set; }
 }
 
 public class UserFilterDTO
@@ -32,6 +37,7 @@ public class UserResultDTO
     public string FullName { get; set; } = string.Empty;
     public bool IsActive { get; set; }
     public List<string> Roles { get; set; } = new();
+    public string AllowedModules { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 }
 

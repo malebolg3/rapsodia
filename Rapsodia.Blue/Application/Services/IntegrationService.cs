@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 using System.Security.Claims;
 using Microsoft.Extensions.Configuration;
 using Rapsodia.Blue.Application.DTOs;

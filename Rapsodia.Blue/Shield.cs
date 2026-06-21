@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Th1eros
+
 using System.Text;
 using System.Threading.RateLimiting;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.EntityFrameworkCore;
 using Rapsodia.Blue.Infrastructure.Configuration;
 using Rapsodia.Silver.Infrastructure.Extensions;
 using Rapsodia.Blue.Application.Interfaces;
@@ -12,18 +16,15 @@ using Rapsodia.Blue.Application.Middleware;
 using Rapsodia.Blue.Application.Services.Olimpo;
 using Rapsodia.Blue.Application.Interfaces.Olimpo;
 using Rapsodia.Blue.Infrastructure.Repository.Olimpo;
+using Rapsodia.Blue.Infrastructure.Data;
 
 Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
 
 var environmentName = Environment.GetEnvironmentVariable("ENV") ?? "Development";
 
-var envPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".env"));
+var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
 if (File.Exists(envPath)) Env.Load(envPath);
-
-var envFile = $".env.{environmentName.ToLower()}";
-var envSpecificPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", envFile));
-if (File.Exists(envSpecificPath)) Env.Load(envSpecificPath);
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Environment.EnvironmentName = environmentName;
@@ -43,6 +44,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSingleton<IAuthService, AuthAppService>();
 builder.Services.AddSingleton<DatabaseConfigService>();
 builder.Services.AddSingleton<TenantService>();
+builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
@@ -101,7 +103,13 @@ builder.Services.AddCors(o => o.AddPolicy("BluePolicy", p => p.WithOrigins(origi
 
 var app = builder.Build();
 
-app.UseCors(builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<BlueDbContext>();
+    db.Database.Migrate();
+}
+
+app.UseCors("BluePolicy");
 
 app.MapGet("/", () => Results.Redirect("/swagger/index.html"));
 
