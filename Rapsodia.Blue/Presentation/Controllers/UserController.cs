@@ -82,4 +82,5 @@ public class UserController : ControllerBase
         var result = await _service.RemoveRoleAsync(id, roleId, ct);
         return result.Success ? Ok(result) : BadRequest(result);
     }
+    
 }

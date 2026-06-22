@@ -34,6 +34,7 @@ public class AppDbContext : DbContext
     public DbSet<EntropyHistory> EntropyHistories => Set<EntropyHistory>();
     public DbSet<ConversationHistory> ConversationHistories => Set<ConversationHistory>();
     public DbSet<GraphHistory> GraphHistories => Set<GraphHistory>();
+    public DbSet<AgentMetadata> AgentMetadata => Set<AgentMetadata>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -56,6 +57,12 @@ public class AppDbContext : DbContext
         });
 
         modelBuilder.Entity<GraphHistory>().ToTable("GraphHistories");
+        modelBuilder.Entity<AgentMetadata>(b =>
+        {
+            b.ToTable("AgentMetadata");
+            b.HasIndex(a => a.AgentId).IsUnique();
+            b.HasQueryFilter(a => a.DeletedAt == null);
+        });
 
         ConfigureFieldEncryption(modelBuilder);
     }

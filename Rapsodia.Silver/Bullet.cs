@@ -12,14 +12,16 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Orleans.Configuration;
+using Orleans.Streams;
 using Rapsodia.Silver.Application.Interfaces;
 using Rapsodia.Silver.Application.Services;
+using Rapsodia.Silver.Domain.Interfaces;
 using Rapsodia.Silver.Infrastructure.Extensions;
+using Rapsodia.Silver.Infrastructure.Repositories;
 using Rapsodia.Silver.Infrastructure.Services;
 using Rapsodia.Silver.Spart;
 using Rapsodia.Silver.Spart.Grains;
 using Rapsodia.Silver.Spart.Interfaces;
-using Orleans.Streams;
 
 Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
@@ -69,10 +71,10 @@ builder.Services.AddHttpClient("AIAgent", c =>
     c.Timeout = TimeSpan.FromMinutes(5);
 });
 
-builder.Services.AddHttpClient<IObsidianService, ObsidianService>(c =>
+builder.Services.AddHttpClient<IObsidianService, ObsidianService>(client =>
 {
-    c.BaseAddress = new Uri(Environment.GetEnvironmentVariable("DOC_URL") ?? "http://localhost:27124");
-    c.DefaultRequestHeaders.Add("X-API-Key", Environment.GetEnvironmentVariable("DOC_KEY") ?? "");
+    client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("DOC_URL") 
+        ?? "http://127.0.0.1:27123/mcp/");
 });
 
 var origins = Environment.GetEnvironmentVariable("CORS")
@@ -89,7 +91,9 @@ builder.Services.AddCors(options =>
               .AllowCredentials());
 });
 
-builder.Services.AddSingleton<IObsidianService, ObsidianService>();
+builder.Services.AddScoped<IAgentRepository, AgentRepository>();
+builder.Services.AddScoped<IMemoryGraphRepository, MemoryGraphRepository>();
+builder.Services.AddScoped<IMemoryService, MemoryService>();
 
 var enableOrleans = Environment.GetEnvironmentVariable("ENB_ORLN") ?? builder.Configuration["ENB_ORLN"];
 if (enableOrleans?.ToLower() == "true")

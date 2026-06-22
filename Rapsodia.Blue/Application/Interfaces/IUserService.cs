@@ -15,4 +15,6 @@ public interface IUserService
     Task<Result<bool>> DisableAsync(int id, CancellationToken ct);
     Task<Result<bool>> EnableAsync(int id, CancellationToken ct);
     Task<Result<UserResultDTO>> SetPermissionsAsync(int id, string role, string allowedModules, CancellationToken ct);
+    Task<Result<bool>> AddRoleAsync(int id, AddRoleRequest request, CancellationToken ct);
+    Task<Result<bool>> RemoveRoleAsync(int id, int roleId, CancellationToken ct);
 }

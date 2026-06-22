@@ -76,6 +76,8 @@ services:
       - ASPNETCORE_URLS=http://0.0.0.0:10000
       - TNS_ADMIN=/app/wallet
       - ORACLE_HOME=/app/wallet
+      - ENB_ORLN=true
+      - ORLEANS_ENABLED=true
     ports:
       - "10004:10000"
     volumes:

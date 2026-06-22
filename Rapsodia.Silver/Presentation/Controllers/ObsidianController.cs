@@ -4,7 +4,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Rapsodia.Silver.Application.Interfaces;
+using Rapsodia.Silver.Domain.Interfaces;
 
 namespace Rapsodia.Silver.Presentation.Controllers;
 

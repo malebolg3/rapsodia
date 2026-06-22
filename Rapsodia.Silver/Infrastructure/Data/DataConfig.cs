@@ -1,66 +1,41 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Th1eros
 
-using System;
-using System.Linq;
-using System.Reflection;
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Rapsodia.Silver.Domain.Interfaces;
+using Rapsodia.Silver.Infrastructure.Providers;
 using StackExchange.Redis;
 
 namespace Rapsodia.Silver.Infrastructure.Data;
 
 public static class DataConfig
 {
-    private static readonly Regex SafeNameRegex = new(@"^[a-zA-Z0-9_\-\.]+$", RegexOptions.Compiled);
-
     public static IServiceCollection AddDataContext(this IServiceCollection services, IConfiguration configuration, string schema = "principal")
-    {   
-        var assemblyName = Environment.GetEnvironmentVariable("DB_ASSEMBLY") ?? configuration["DB_ASSEMBLY"];
-        var methodName = Environment.GetEnvironmentVariable("DB_METHOD") ?? configuration["DB_METHOD"];
+    {
+        var dbProv = Environment.GetEnvironmentVariable("DB_PROV") ?? configuration["DB_PROV"] ?? "Oracle";
         var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION") ?? configuration.GetConnectionString("DefaultConnection");
 
-        if (string.IsNullOrEmpty(assemblyName) || string.IsNullOrEmpty(methodName) || string.IsNullOrEmpty(connectionString))
-            throw new InvalidOperationException("DB_ASSEMBLY, DB_METHOD, DB_CONNECTION ausentes.");
+        if (string.IsNullOrEmpty(connectionString))
+            throw new InvalidOperationException("DB_CONNECTION ausente.");
 
-        if (!SafeNameRegex.IsMatch(assemblyName) || !SafeNameRegex.IsMatch(methodName))
-            throw new ArgumentException("Assinatura de provedor invalida detectada.");
+        services.AddSingleton<IDatabaseProvider>(_ => dbProv switch
+        {
+            "Oracle" => new OracleProvider(),
+            "SQLite" => new SqliteProvider(),
+            _ => throw new ArgumentException($"Provider não suportado: {dbProv}")
+        });
 
-        services.AddDbContext<AppDbContext>(options =>
-            ConfigureProvider(options, assemblyName, methodName, connectionString),
-            ServiceLifetime.Transient,
-            ServiceLifetime.Transient);
+        services.AddDbContext<AppDbContext>((sp, options) =>
+        {
+            var provider = sp.GetRequiredService<IDatabaseProvider>();
+            provider.Configure(options, connectionString);
+        }, ServiceLifetime.Transient, ServiceLifetime.Transient);
 
         ConfigureCache(services, configuration);
         return services;
-    }
-
-    public static void ConfigureProvider(DbContextOptionsBuilder options, string assemblyName, string methodName, string connectionString)
-    {
-        var assembly = Assembly.Load(assemblyName);
-        var method = assembly.GetTypes()
-            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
-            .FirstOrDefault(m => m.Name == methodName && m.GetParameters().Length >= 2 && m.GetParameters()[0].ParameterType == typeof(DbContextOptionsBuilder));
-
-        if (method == null) 
-            throw new InvalidOperationException($"Metodo {methodName} nao encontrado no assembly {assemblyName}.");
-
-        var parameters = method.GetParameters();
-        var args = new object?[parameters.Length];
-        args[0] = options;
-        args[1] = connectionString;
-
-        if (parameters.Length > 2 && parameters[2].ParameterType.Name == "ServerVersion")
-        {
-            var serverVersionType = assembly.GetType("Microsoft.EntityFrameworkCore.ServerVersion") ?? assembly.GetType("Pomelo.EntityFrameworkCore.MySql.Infrastructure.ServerVersion");
-            var autoDetect = serverVersionType?.GetMethod("AutoDetect", new[] { typeof(string) });
-            args[2] = autoDetect?.Invoke(null, new object[] { connectionString });
-        }
-
-        method.Invoke(null, args);
     }
 
     private static void ConfigureCache(IServiceCollection services, IConfiguration configuration)

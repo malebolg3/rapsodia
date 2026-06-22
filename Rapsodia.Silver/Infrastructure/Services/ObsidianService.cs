@@ -6,9 +6,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Rapsodia.Silver.Application.Interfaces;
+using Rapsodia.Silver.Domain.Interfaces;
 
-namespace Rapsodia.Silver.Application.Services;
+namespace Rapsodia.Silver.Infrastructure.Services;
 
 public class ObsidianService : IObsidianService
 {
@@ -16,6 +16,9 @@ public class ObsidianService : IObsidianService
     private readonly IConfiguration _cfg;
     private readonly ILogger<ObsidianService> _logger;
     private readonly bool _mock;
+    private readonly string? _offlinePath;
+    private readonly string? _docUrl;
+    private readonly string? _docKey;
     private readonly Dictionary<string, List<string>> _links = new();
     private static readonly Regex SafePathRegex = new(@"^[a-zA-Z0-9_\-]+$", RegexOptions.Compiled);
 
@@ -24,7 +27,10 @@ public class ObsidianService : IObsidianService
         _http = http;
         _cfg = cfg;
         _logger = logger;
-        _mock = cfg["DOC_MOCK"] == "true" || string.IsNullOrEmpty(cfg["DOC_URL"]);
+        _mock = cfg["DOC_MOCK"] == "true";
+        _offlinePath = cfg["DOC_OFF"];
+        _docUrl = cfg["DOC_URL"];
+        _docKey = cfg["DOC_KEY"];
     }
 
     public async Task<string> AppendNoteAsync(string vault, string content)
@@ -79,7 +85,45 @@ related: [{string.Join(", ", relatedList)}]
             return noteId;
         }
 
-        await SaveNoteToObsidian(vault, noteId, markdown);
+        var savedToObsidian = false;
+
+        if (!string.IsNullOrEmpty(_docUrl))
+        {
+            try
+            {
+                await SaveNoteToObsidian(vault, noteId, markdown);
+                savedToObsidian = true;
+                _logger.LogInformation("Obsidian: Nota {NoteId} salva via HTTP", noteId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Obsidian indisponível. Usando fallback offline");
+            }
+        }
+
+        if (!savedToObsidian && !string.IsNullOrEmpty(_offlinePath))
+        {
+            await SaveNoteOffline(vault, noteId, markdown);
+            _logger.LogInformation("Offline: Nota {NoteId} salva localmente", noteId);
+        }
+
+        if (!savedToObsidian && string.IsNullOrEmpty(_offlinePath))
+        {
+            _logger.LogError("Nenhum destino disponível para salvar nota {NoteId}", noteId);
+        }
+
+        if (savedToObsidian && !string.IsNullOrEmpty(_offlinePath))
+        {
+            try
+            {
+                await SaveNoteOffline(vault, noteId, markdown);
+                _logger.LogDebug("Offline: Espelho atualizado para nota {NoteId}", noteId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Offline: Falha ao atualizar espelho da nota {NoteId}", noteId);
+            }
+        }
 
         foreach (var relatedId in relatedList)
         {
@@ -96,16 +140,30 @@ related: [{string.Join(", ", relatedList)}]
 
         if (_mock) return $"# Mock Note {noteId}\n\nSecurity analysis result placeholder.";
 
-        var docUrl = _cfg["DOC_URL"]!;
-        var apiKey = _cfg["DOC_KEY"];
+        if (!string.IsNullOrEmpty(_docUrl))
+        {
+            try
+            {
+                _http.DefaultRequestHeaders.Clear();
+                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {_docKey}");
+                var response = await _http.GetAsync($"{_docUrl}/vault/{vault}/note/{noteId}");
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync();
+            }
+            catch
+            {
+                _logger.LogWarning("Obsidian indisponível para leitura. Tentando offline");
+            }
+        }
 
-        _http.DefaultRequestHeaders.Clear();
-        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        if (!string.IsNullOrEmpty(_offlinePath))
+        {
+            var filePath = Path.Combine(_offlinePath, vault, $"{noteId}.md");
+            if (File.Exists(filePath))
+                return await File.ReadAllTextAsync(filePath, Encoding.UTF8);
+        }
 
-        var response = await _http.GetAsync($"{docUrl}/vault/{vault}/note/{noteId}");
-        response.EnsureSuccessStatusCode();
-
-        return await response.Content.ReadAsStringAsync();
+        throw new FileNotFoundException($"Nota não encontrada: {noteId}");
     }
 
     public async Task<List<string>> SearchNotesAsync(string vault, string query)
@@ -114,33 +172,62 @@ related: [{string.Join(", ", relatedList)}]
 
         if (_mock) return new List<string> { "S20240606143000", "R20240606143100", "B20240606143200", "V20240606150000" };
 
-        var docUrl = _cfg["DOC_URL"]!;
-        var apiKey = _cfg["DOC_KEY"];
+        var results = new HashSet<string>();
 
-        _http.DefaultRequestHeaders.Clear();
-        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        if (!string.IsNullOrEmpty(_docUrl))
+        {
+            try
+            {
+                _http.DefaultRequestHeaders.Clear();
+                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {_docKey}");
+                var response = await _http.GetAsync($"{_docUrl}/vault/{vault}/search?q={Uri.EscapeDataString(query)}");
+                response.EnsureSuccessStatusCode();
+                var searchResults = await response.Content.ReadFromJsonAsync<List<ObsidianSearchResult>>();
+                if (searchResults != null)
+                    foreach (var r in searchResults) results.Add(r.NoteId);
+            }
+            catch
+            {
+                _logger.LogWarning("Busca Obsidian falhou. Complementando com offline");
+            }
+        }
 
-        var response = await _http.GetAsync($"{docUrl}/vault/{vault}/search?q={Uri.EscapeDataString(query)}");
-        response.EnsureSuccessStatusCode();
+        if (!string.IsNullOrEmpty(_offlinePath))
+        {
+            var dir = Path.Combine(_offlinePath, vault);
+            if (Directory.Exists(dir))
+            {
+                var files = Directory.GetFiles(dir, "*.md", SearchOption.AllDirectories);
+                foreach (var file in files)
+                {
+                    var content = await File.ReadAllTextAsync(file, Encoding.UTF8);
+                    if (content.Contains(query, StringComparison.OrdinalIgnoreCase))
+                        results.Add(Path.GetFileNameWithoutExtension(file));
+                }
+            }
+        }
 
-        var results = await response.Content.ReadFromJsonAsync<List<ObsidianSearchResult>>();
-        return results?.Select(r => r.NoteId).ToList() ?? new List<string>();
+        return results.ToList();
     }
 
     public async Task<bool> HealthCheckAsync()
     {
         if (_mock) return true;
 
-        try
+        if (!string.IsNullOrEmpty(_docUrl))
         {
-            var docUrl = _cfg["DOC_URL"]!;
-            var response = await _http.GetAsync($"{docUrl}/health");
-            return response.IsSuccessStatusCode;
+            try
+            {
+                var response = await _http.GetAsync($"{_docUrl}/health");
+                return response.IsSuccessStatusCode;
             }
-        catch
-        {
-            return false;
+            catch { }
         }
+
+        if (!string.IsNullOrEmpty(_offlinePath))
+            return Directory.Exists(_offlinePath);
+
+        return false;
     }
 
     private void ValidateInput(string input)
@@ -153,21 +240,12 @@ related: [{string.Join(", ", relatedList)}]
     {
         var prefix = vault switch
         {
-            "scans" => "R",
-            "exploits" => "R",
-            "vulnerabilities" => "B",
-            "incidents" => "B",
-            "defense" => "B",
-            "ai-analysis" => "S",
-            "events" => "S",
-            "knowledge" => "S",
-            "honeypots" => "V",
-            "soc" => "V",
-            "cyber-ranges" => "V",
-            "labs" => "V",
+            "scans" => "R", "exploits" => "R",
+            "vulnerabilities" => "B", "incidents" => "B", "defense" => "B",
+            "ai-analysis" => "S", "events" => "S", "knowledge" => "S",
+            "honeypots" => "V", "soc" => "V", "cyber-ranges" => "V", "labs" => "V",
             _ => "X"
         };
-
         var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
         return $"{prefix}{timestamp}";
     }
@@ -175,28 +253,14 @@ related: [{string.Join(", ", relatedList)}]
     private static string GenerateTitle(string content)
     {
         var firstLine = content.Split('\n')[0].Trim();
-
         if (firstLine.StartsWith("## ") || firstLine.StartsWith("### "))
             firstLine = firstLine[3..].Trim();
         if (firstLine.StartsWith("# "))
             firstLine = firstLine[2..].Trim();
-
         var title = firstLine.Length > 50 ? firstLine[..50] : firstLine;
-
-        title = title.ToLower()
-            .Replace(" ", "-")
-            .Replace(":", "")
-            .Replace("/", "-")
-            .Replace("\\", "-")
-            .Replace(".", "")
-            .Replace(",", "")
-            .Replace("(", "")
-            .Replace(")", "")
-            .Replace("[", "")
-            .Replace("]", "")
-            .Replace("--", "-")
-            .Trim('-');
-
+        title = title.ToLower().Replace(" ", "-").Replace(":", "").Replace("/", "-")
+            .Replace("\\", "-").Replace(".", "").Replace(",", "").Replace("(", "")
+            .Replace(")", "").Replace("[", "").Replace("]", "").Replace("--", "-").Trim('-');
         return title.Length > 60 ? title[..60] : title;
     }
 
@@ -209,14 +273,9 @@ related: [{string.Join(", ", relatedList)}]
 
     private static string BuildBacklinks(List<string> relatedNoteIds)
     {
-        if (!relatedNoteIds.Any())
-            return "Nenhuma";
-
+        if (!relatedNoteIds.Any()) return "Nenhuma";
         var sb = new StringBuilder();
-        foreach (var id in relatedNoteIds)
-        {
-            sb.AppendLine($"- [[{id}]]");
-        }
+        foreach (var id in relatedNoteIds) sb.AppendLine($"- [[{id}]]");
         return sb.ToString().TrimEnd();
     }
 
@@ -224,25 +283,25 @@ related: [{string.Join(", ", relatedList)}]
     {
         if (!_links.ContainsKey(noteId) || !_links[noteId].Any())
             return "Nenhuma (atualiza ao referenciar)";
-
         var sb = new StringBuilder();
-        foreach (var id in _links[noteId])
-        {
-            sb.AppendLine($"- [[{id}]]");
-        }
+        foreach (var id in _links[noteId]) sb.AppendLine($"- [[{id}]]");
         return sb.ToString().TrimEnd();
+    }
+
+    private async Task SaveNoteOffline(string vault, string noteId, string markdown)
+    {
+        var dir = Path.Combine(_offlinePath!, vault);
+        Directory.CreateDirectory(dir);
+        var filePath = Path.Combine(dir, $"{noteId}.md");
+        await File.WriteAllTextAsync(filePath, markdown, Encoding.UTF8);
     }
 
     private async Task SaveNoteToObsidian(string vault, string noteId, string markdown)
     {
-        var docUrl = _cfg["DOC_URL"]!;
-        var apiKey = _cfg["DOC_KEY"];
-
         _http.DefaultRequestHeaders.Clear();
-        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
+        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {_docKey}");
         var payload = new { vault, noteId, content = markdown, timestamp = DateTime.UtcNow };
-        var response = await _http.PostAsJsonAsync($"{docUrl}/vault/{vault}/note/{noteId}", payload);
+        var response = await _http.PostAsJsonAsync($"{_docUrl}/vault/{vault}/note/{noteId}", payload);
         response.EnsureSuccessStatusCode();
     }
 
@@ -252,20 +311,15 @@ related: [{string.Join(", ", relatedList)}]
         {
             var existingContent = await ReadNoteAsync("any", targetNoteId);
             var backlinkSection = "## 📌 Referenced By";
-
             if (existingContent.Contains(backlinkSection))
             {
                 var updatedContent = existingContent.Replace(
                     "Nenhuma (atualiza ao referenciar)",
                     $"Nenhuma (atualiza ao referenciar)\n- [[{sourceNoteId}]]");
-
                 if (updatedContent == existingContent)
-                {
                     updatedContent = existingContent.Insert(
                         existingContent.LastIndexOf(backlinkSection) + backlinkSection.Length,
                         $"\n- [[{sourceNoteId}]]");
-                }
-
                 await SaveNoteToObsidian("any", targetNoteId, updatedContent);
             }
         }

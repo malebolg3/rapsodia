@@ -5,7 +5,9 @@ namespace Rapsodia.Silver.Domain.Interfaces;
 
 public interface IObsidianService
 {
-    Task<string> QueryAsync(string query);
-    Task<bool> SyncDocumentAsync(string path, string content);
-    Task<string> GetDocumentAsync(string path);
+    Task<string> AppendNoteAsync(string vault, string content);
+    Task<string> AppendNoteWithLinksAsync(string vault, string content, IEnumerable<string>? relatedNoteIds = null, IEnumerable<string>? tags = null);
+    Task<string> ReadNoteAsync(string vault, string noteId);
+    Task<List<string>> SearchNotesAsync(string vault, string query);
+    Task<bool> HealthCheckAsync();
 }

@@ -8,9 +8,9 @@ public class User : BaseEntity
     public string Username { get; protected set; } = string.Empty;
     public string PasswordHash { get; protected set; } = string.Empty;
     public string Role { get; protected set; } = "Analyst";
-    public string Email { get; protected set; } = string.Empty;
-    public string FullName { get; protected set; } = string.Empty;
-    public string AllowedModules { get; protected set; } = "blue,red,violet,silver";
+    public string? Email { get; protected set; }
+    public string? FullName { get; protected set; }
+    public string? AllowedModules { get; protected set; }
 
     public User() { }
 

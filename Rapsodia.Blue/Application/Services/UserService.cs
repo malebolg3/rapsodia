@@ -119,6 +119,25 @@ public class UserService : IUserService
 
         return Result<UserResultDTO>.Ok(Map(user));
     }
+    public async Task<Result<bool>> AddRoleAsync(int id, AddRoleRequest request, CancellationToken ct)
+    {
+        var user = await _db.Users.FindAsync(new object[] { id }, ct);
+        if (user is null) return Result<bool>.Fail("User not found");
+        if (user.Role == "Admin") return Result<bool>.Fail("Admin already has all roles");
+        user.SetRole(request.RoleId.ToString());
+        await _db.SaveChangesAsync(ct);
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> RemoveRoleAsync(int id, int roleId, CancellationToken ct)
+    {
+        var user = await _db.Users.FindAsync(new object[] { id }, ct);
+        if (user is null) return Result<bool>.Fail("User not found");
+        if (user.Role == "Admin") return Result<bool>.Fail("Cannot remove roles from Admin");
+        user.SetRole("Analyst");
+        await _db.SaveChangesAsync(ct);
+        return Result<bool>.Ok(true);
+    }
 
     private static UserResultDTO Map(User user) => new UserResultDTO
     {
