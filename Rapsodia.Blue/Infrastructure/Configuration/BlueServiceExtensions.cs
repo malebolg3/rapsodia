@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Th1eros
 
-using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
 using Oracle.ManagedDataAccess.Client;
 using Rapsodia.Blue.Infrastructure.Data;
+using Rapsodia.Blue.Infrastructure.Data.Providers;
 
 namespace Rapsodia.Blue.Infrastructure.Configuration;
 
@@ -15,38 +15,36 @@ public static class BlueServiceExtensions
 {
     public static IServiceCollection AddBlueDatabase(this IServiceCollection services, IConfiguration configuration)
     {
-        var provider = (Environment.GetEnvironmentVariable("DB_PROV") ?? "InMemory").Replace("\"", "").Trim();
-        var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "127.0.0.1";
-        var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "1522";
-        var name = Environment.GetEnvironmentVariable("DB_NAME");
-        var user = Environment.GetEnvironmentVariable("DB_USER");
-        var pass = Environment.GetEnvironmentVariable("DB_PASS");
+        var dbProv = Environment.GetEnvironmentVariable("DB_PROV") ?? configuration["DB_PROV"] ?? "Oracle";
+        var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION") ?? configuration.GetConnectionString("DefaultConnection");
 
-        var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION") 
-            ?? $"User Id={user};Password={pass};Data Source={host}:{port}/{name}";
-            
-        var tnsAdmin = Environment.GetEnvironmentVariable("TNS_ADMIN") ?? "/app/wallet";
-        Console.WriteLine($"[DB] INICIANDO AddBlueDatabase com provider={provider}, TNS_ADMIN={tnsAdmin}");
-        Console.WriteLine($"[DB] ConnectionString: {connectionString}");
+        if (string.IsNullOrEmpty(connectionString))
+            throw new InvalidOperationException("DB_CONNECTION ausente.");
 
-        if (provider.Equals("Oracle", StringComparison.OrdinalIgnoreCase))
+        if (dbProv.Equals("Oracle", StringComparison.OrdinalIgnoreCase))
         {
+            var tnsAdmin = Environment.GetEnvironmentVariable("TNS_ADMIN") ?? "/app/wallet";
             OracleConfiguration.TnsAdmin = tnsAdmin;
             OracleConfiguration.WalletLocation = tnsAdmin;
-            Console.WriteLine("[DB] OracleConfiguration definida");
         }
 
-        services.AddDbContext<BlueDbContext>(options =>
+        services.AddDbContext<BlueDbContext>((sp, options) =>
         {
-            if (provider.Equals("Oracle", StringComparison.OrdinalIgnoreCase))
+            if (DatabaseToggle.UseSqlite || dbProv.Equals("SQLite", StringComparison.OrdinalIgnoreCase))
             {
-                options.UseOracle(connectionString);
+                var offlinePath = Environment.GetEnvironmentVariable("DB_PATH_OFFLINE") ?? "Data Source=rapsodia_offline.db";
+                ProviderFactory.Create("SQLite").Configure(options, offlinePath);
             }
             else
             {
-                options.UseInMemoryDatabase("RapsodiaBlue");
+                ProviderFactory.Create(dbProv).Configure(options, connectionString);
             }
         });
+
+        if (!DatabaseToggle.UseSqlite)
+        {
+            services.AddHostedService<DatabaseHealthService>();
+        }
 
         return services;
     }

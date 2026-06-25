@@ -17,6 +17,7 @@ services:
       - "10001:10000"
     volumes:
       - /home/ubuntu/th1er/ops/wallet_rainbow:/app/wallet
+      - ./Rapsodia.Blue/rapsodia_offline.db:/app/rapsodia_offline.db 
     networks:
       - malebolge_net
     restart: unless-stopped

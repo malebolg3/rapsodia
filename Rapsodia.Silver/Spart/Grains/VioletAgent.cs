@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Th1eros
 
 using System.Diagnostics;
+using Orleans;
 using Rapsodia.Silver.Domain.Interfaces;
 using Rapsodia.Silver.Application.Services;
 using Rapsodia.Silver.Spart.Interfaces;
@@ -48,7 +49,7 @@ public class VioletAgent : Grain, IVioletAgent
             ["MODE"] = "sandbox"
         };
         var labId = await CreateEnvironmentAsync(name, image, 2, ttlMinutes, envVars);
-        
+
         await _publisher.PublishAsync("Default", "lab-events", Guid.NewGuid(), new
         {
             type = "sandbox.created",
@@ -57,7 +58,7 @@ public class VioletAgent : Grain, IVioletAgent
             tools,
             timestamp = DateTime.UtcNow
         });
-        
+
         return labId;
     }
 
@@ -87,7 +88,7 @@ public class VioletAgent : Grain, IVioletAgent
         };
 
         var labId = await CreateEnvironmentAsync(name, image, 3, ttlMinutes, envVars, ports);
-        
+
         await _obsidian.AppendNoteAsync("honeypots", $"""
 ### 🍯 Honeypot: {name}
 - **Tipo:** {honeypotType}
@@ -97,7 +98,7 @@ public class VioletAgent : Grain, IVioletAgent
 - **Criado:** {DateTime.UtcNow}
 ---
 """);
-        
+
         await _publisher.PublishAsync("Default", "lab-events", Guid.NewGuid(), new
         {
             type = "honeypot.deployed",
@@ -106,7 +107,7 @@ public class VioletAgent : Grain, IVioletAgent
             honeypotType,
             timestamp = DateTime.UtcNow
         });
-        
+
         _logger.LogInformation("Honeypot {Name} ({Type}) implantado em {LabId}", name, honeypotType, labId);
         return labId;
     }
@@ -159,7 +160,7 @@ public class VioletAgent : Grain, IVioletAgent
         };
 
         var images = scenarios.GetValueOrDefault(scenario, "kalilinux/kali-rolling:latest,ubuntu:22.04");
-        
+
         var envVars = new Dictionary<string, string>
         {
             ["SCENARIO"] = scenario,
@@ -196,7 +197,7 @@ public class VioletAgent : Grain, IVioletAgent
     {
         _labCount--;
         _activeLabs.RemoveAll(l => l.Id == labId);
-        
+
         var client = _http.CreateClient();
         var vltPort = _cfg["PORT_VLT"] ?? "5075";
 
@@ -204,14 +205,14 @@ public class VioletAgent : Grain, IVioletAgent
         {
             await client.DeleteAsync($"http://localhost:{vltPort}/api/lab/{labId}");
             await _obsidian.AppendNoteAsync("labs", $"### 🗑️ Lab {labId} destroyed at {DateTime.UtcNow}\n");
-            
+
             await _publisher.PublishAsync("Default", "lab-events", Guid.NewGuid(), new
             {
                 type = "lab.destroyed",
                 labId,
                 timestamp = DateTime.UtcNow
             });
-            
+
             return true;
         }
         catch
@@ -258,7 +259,7 @@ public class VioletAgent : Grain, IVioletAgent
         var client = _http.CreateClient();
         var vltPort = _cfg["PORT_VLT"] ?? "5075";
         var labId = Guid.NewGuid().ToString("N")[..12];
-        
+
         _telemetry.RecordLabCreated(level);
 
         try
@@ -297,17 +298,26 @@ public class VioletAgent : Grain, IVioletAgent
     }
 }
 
+[GenerateSerializer]
 public class LabCreateResponse
 {
+    [Id(0)]
     public string ContainerId { get; set; } = string.Empty;
 }
 
+[GenerateSerializer]
 public class LabInfo
 {
+    [Id(0)]
     public string Id { get; set; } = string.Empty;
+    [Id(1)]
     public string Name { get; set; } = string.Empty;
+    [Id(2)]
     public int Level { get; set; }
+    [Id(3)]
     public string Image { get; set; } = string.Empty;
+    [Id(4)]
     public DateTime CreatedAt { get; set; }
+    [Id(5)]
     public DateTime ExpiresAt { get; set; }
 }

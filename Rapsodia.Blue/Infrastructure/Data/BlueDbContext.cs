@@ -4,6 +4,8 @@
 using Microsoft.EntityFrameworkCore;
 using Rapsodia.Blue.Domain.Entities;
 using Rapsodia.Blue.Domain.Entities.Olimpo;
+using Rapsodia.Blue.Domain.Enums;
+using Rapsodia.Blue.Infrastructure.Data.Providers;
 
 namespace Rapsodia.Blue.Infrastructure.Data;
 
@@ -19,10 +21,17 @@ public class BlueDbContext : DbContext
     public DbSet<OlimpoCredential> OlimpoCredentials => Set<OlimpoCredential>();
     public DbSet<OlimpoTotpAccount> OlimpoTotpAccounts => Set<OlimpoTotpAccount>();
     public DbSet<OlimpoDocument> OlimpoDocuments => Set<OlimpoDocument>();
+    public DbSet<SyncQueue> SyncQueues => Set<SyncQueue>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<Asset>(a => a.Property(x => x.Id).ValueGeneratedOnAdd());
+        modelBuilder.Entity<Vuln>(v => v.Property(x => x.Id).ValueGeneratedOnAdd());
+        modelBuilder.Entity<User>(u => u.Property(x => x.Id).ValueGeneratedOnAdd());
+        modelBuilder.Entity<SyncQueue>(s => s.Property(x => x.Id).ValueGeneratedOnAdd());
+        modelBuilder.Entity<AssetType>(t => t.Property(x => x.Id).ValueGeneratedOnAdd());
 
         modelBuilder.Entity<Asset>(a =>
         {
@@ -54,14 +63,9 @@ public class BlueDbContext : DbContext
         modelBuilder.Entity<AssetVuln>(av =>
         {
             av.HasKey(x => new { x.AssetId, x.VulnId });
-            av.HasOne(x => x.Asset)
-              .WithMany(a => a.AssetVulns)
-              .HasForeignKey(x => x.AssetId)
-              .OnDelete(DeleteBehavior.Restrict);
-            av.HasOne(x => x.Vuln)
-              .WithMany(v => v.AssetVulns)
-              .HasForeignKey(x => x.VulnId)
-              .OnDelete(DeleteBehavior.Restrict);
+            av.HasQueryFilter(x => x.Asset.DeletedAt == null && x.Vuln.DeletedAt == null); 
+            av.HasOne(x => x.Asset).WithMany(a => a.AssetVulns).HasForeignKey(x => x.AssetId).OnDelete(DeleteBehavior.Cascade);
+            av.HasOne(x => x.Vuln).WithMany(v => v.AssetVulns).HasForeignKey(x => x.VulnId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
@@ -99,6 +103,24 @@ public class BlueDbContext : DbContext
             entity.Property(e => e.StoragePath).IsRequired();
             entity.Property(e => e.Category).HasMaxLength(128);
         });
+
+        modelBuilder.Entity<SyncQueue>(entity =>
+        {
+            entity.ToTable("SYS_SyncQueue");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EntityType).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.EntityId).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.Operation).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Payload).IsRequired();
+            entity.Property(e => e.Status).IsRequired().HasConversion<int>();
+            entity.Property(e => e.LastError).HasMaxLength(1024);
+            entity.HasIndex(e => e.Status);
+        });
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.AddInterceptors(new SyncSaveChangesInterceptor());
     }
 
     public override int SaveChanges()

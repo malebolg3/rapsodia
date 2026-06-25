@@ -30,9 +30,19 @@ public static class DataConfig
 
         services.AddDbContext<AppDbContext>((sp, options) =>
         {
-            var provider = sp.GetRequiredService<IDatabaseProvider>();
-            provider.Configure(options, connectionString);
+            string effectiveProvider = DatabaseToggle.UseSqlite ? "SQLite" : dbProv;
+            string effectiveConn = DatabaseToggle.UseSqlite
+                ? Environment.GetEnvironmentVariable("DB_CONNECTION_OFFLINE") ?? "Data Source=rapsodia_offline.db"
+                : connectionString;
+
+            var provider = DatabaseToggle.UseSqlite
+                ? new SqliteProvider()
+                : sp.GetRequiredService<IDatabaseProvider>();
+
+            provider.Configure(options, effectiveConn);
         }, ServiceLifetime.Transient, ServiceLifetime.Transient);
+
+        services.AddHostedService<DatabaseHealthService>();
 
         ConfigureCache(services, configuration);
         return services;

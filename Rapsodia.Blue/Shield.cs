@@ -17,6 +17,8 @@ using Rapsodia.Blue.Application.Services.Olimpo;
 using Rapsodia.Blue.Application.Interfaces.Olimpo;
 using Rapsodia.Blue.Infrastructure.Repository.Olimpo;
 using Rapsodia.Blue.Infrastructure.Data;
+using Rapsodia.Blue.Infrastructure.Repository;
+using Oracle.ManagedDataAccess.Client;
 
 Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
@@ -41,15 +43,21 @@ builder.Services.AddBlueHttpClients(builder.Configuration);
 builder.Services.AddBlueSwagger();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSingleton<IAuthService, AuthAppService>();
+builder.Services.AddScoped<IAuthService, AuthAppService>();
+builder.Services.AddScoped<IAssetService, AssetService>();
+builder.Services.AddScoped<IVulnService, VulnService>();
 builder.Services.AddSingleton<DatabaseConfigService>();
-builder.Services.AddSingleton<TenantService>();
+builder.Services.AddScoped<TenantService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IOlimpoService, OlimpoService>();
-builder.Services.AddScoped<IOlimpoRepositoryPort, Rapsodia.Blue.Infrastructure.Repository.Olimpo.OlimpoRepository>();
+builder.Services.AddScoped<IOlimpoRepositoryPort, OlimpoRepository>();
+builder.Services.AddScoped<ISyncRepositoryPort, SyncRepository>();
+builder.Services.AddScoped<IAssetRepositoryPort, AssetRepository>();
+builder.Services.AddScoped<IVulnRepositoryPort, VulnRepository>();
+builder.Services.AddScoped<SyncOrchestratorService>();
 
 var authKey = Environment.GetEnvironmentVariable("AUTH_KEY") ?? throw new InvalidOperationException("AUTH_KEY obrigatoria.");
 var authIss = Environment.GetEnvironmentVariable("AUTH_ISS") ?? throw new InvalidOperationException("AUTH_ISS obrigatoria.");
@@ -106,10 +114,12 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<BlueDbContext>();
-    db.Database.Migrate();
+    var dbProv = Environment.GetEnvironmentVariable("DB_PROV") ?? "Oracle";
+    DatabaseInitializer.Initialize(db, dbProv);
 }
 
 app.UseCors("BluePolicy");
+app.UseRateLimiter();
 
 app.MapGet("/", () => Results.Redirect("/swagger/index.html"));
 
@@ -167,7 +177,6 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.UseRateLimiter();
 app.MapControllers();
 
 app.Use(async (context, next) =>
