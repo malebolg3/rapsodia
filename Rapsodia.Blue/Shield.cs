@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 using Rapsodia.Blue.Infrastructure.Configuration;
-using Rapsodia.Silver.Infrastructure.Extensions;
 using Rapsodia.Blue.Application.Interfaces;
 using Rapsodia.Blue.Application.Services;
 using Rapsodia.Blue.Application.Middleware;
@@ -18,7 +18,7 @@ using Rapsodia.Blue.Application.Interfaces.Olimpo;
 using Rapsodia.Blue.Infrastructure.Repository.Olimpo;
 using Rapsodia.Blue.Infrastructure.Data;
 using Rapsodia.Blue.Infrastructure.Repository;
-using Oracle.ManagedDataAccess.Client;
+using System.IdentityModel.Tokens.Jwt;
 
 Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
@@ -43,6 +43,15 @@ builder.Services.AddBlueHttpClients(builder.Configuration);
 builder.Services.AddBlueSwagger();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+var redisConnection = Environment.GetEnvironmentVariable("CCH_URL") ?? "localhost:6379";
+var redis = ConnectionMultiplexer.Connect(new ConfigurationOptions
+{
+    EndPoints = { redisConnection },
+    AbortOnConnectFail = false,
+    ConnectTimeout = 5000
+});
+builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
 builder.Services.AddScoped<IAuthService, AuthAppService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IVulnService, VulnService>();
@@ -75,6 +84,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidAudience = authAud,
             ValidateLifetime = true,
+        };
+
+        o.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var authService = context.HttpContext.RequestServices.GetRequiredService<IAuthService>();
+                var token = context.SecurityToken as JwtSecurityToken;
+                if (token != null)
+                {
+                    var rawToken = token.RawData;
+                    if (await authService.IsTokenBlacklistedAsync(rawToken))
+                    {
+                        context.Fail("Token has been revoked.");
+                    }
+                }
+            }
         };
     });
 

@@ -5,7 +5,7 @@ using Orleans;
 
 namespace Rapsodia.Silver.Spart.Interfaces;
 
-public interface ISilverAgent : IGrainWithIntegerKey
+public interface ISilverAgent : IGrainWithGuidKey
 {
     Task<string> AnalyzeAsync(string input);
     Task<string> GetStatusAsync();
@@ -18,20 +18,26 @@ public interface ISilverAgent : IGrainWithIntegerKey
 }
 
 [GenerateSerializer]
-public class AgentInfo
+public sealed class AgentInfo
 {
     [Id(0)]
-    public string AgentId { get; set; } = string.Empty;
+    public string AgentId { get; init; } = string.Empty;
+
     [Id(1)]
-    public string AgentType { get; set; } = string.Empty;
+    public string AgentType { get; init; } = string.Empty;
+
     [Id(2)]
-    public string Expertise { get; set; } = string.Empty;
+    public string Expertise { get; init; } = string.Empty;
+
     [Id(3)]
-    public string OwnerId { get; set; } = string.Empty;
+    public string OwnerId { get; init; } = string.Empty;
+
     [Id(4)]
     public bool IsActive { get; set; }
+
     [Id(5)]
-    public DateTime CreatedAt { get; set; }
+    public DateTime CreatedAt { get; init; }
+
     [Id(6)]
     public DateTime? DeactivatedAt { get; set; }
 }

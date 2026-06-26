@@ -6,17 +6,17 @@ using Rapsodia.Silver.Spart.Interfaces;
 
 namespace Rapsodia.Silver.Spart;
 
-public class GrainRouter
+public sealed class GrainRouter
 {
     private readonly IGrainFactory _grains;
 
     public GrainRouter(IGrainFactory grains)
     {
-        _grains = grains;
+        _grains = grains ?? throw new ArgumentNullException(nameof(grains));
     }
 
-    public ISilverAgent GetSilverAgent() => _grains.GetGrain<ISilverAgent>(0);
-    public IBlueAgent GetBlueAgent() => _grains.GetGrain<IBlueAgent>(0);
-    public IRedAgent GetRedAgent() => _grains.GetGrain<IRedAgent>(0);
-    public IVioletAgent GetVioletAgent() => _grains.GetGrain<IVioletAgent>(0);
+    public ISilverAgent GetSilverAgent() => _grains.GetGrain<ISilverAgent>(Guid.Empty);
+    public IBlueAgent GetBlueAgent(Guid id) => _grains.GetGrain<IBlueAgent>(id);
+    public IRedAgent GetRedAgent(Guid id) => _grains.GetGrain<IRedAgent>(id);
+    public IVioletAgent GetVioletAgent(Guid id) => _grains.GetGrain<IVioletAgent>(id);
 }

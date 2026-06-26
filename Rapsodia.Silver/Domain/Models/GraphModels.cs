@@ -22,6 +22,8 @@ public class GraphEdge
     public string OriginType { get; init; } = null!;
     public string TargetType { get; init; } = null!;
     public string RelationType { get; init; } = null!;
+    public float? Weight { get; set; }
+    public string? Embedding { get; set; }
 }
 
 public class GraphHistory

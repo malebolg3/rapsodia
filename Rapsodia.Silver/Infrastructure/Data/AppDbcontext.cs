@@ -52,6 +52,8 @@ public class AppDbContext : DbContext
             b.Property(e => e.OriginType).HasMaxLength(50).IsRequired();
             b.Property(e => e.TargetType).HasMaxLength(50).IsRequired();
             b.Property(e => e.RelationType).HasMaxLength(100).IsRequired();
+            b.Property(e => e.Weight).HasColumnType("NUMBER(10,4)");
+            b.Property(e => e.Embedding).HasColumnType("CLOB");
             b.HasIndex(e => e.SourceId);
             b.HasIndex(e => e.TargetId);
         });

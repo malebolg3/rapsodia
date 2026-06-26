@@ -21,4 +21,5 @@ public interface IAuthService
     Task<Result<SessionInfo>> Verify2FAAsync(Verify2FARequest request, CancellationToken ct);
     Task<Result<List<SessionInfo>>> GetActiveSessionsAsync(CancellationToken ct);
     Task<Result<bool>> RevokeSessionAsync(string sessionId, CancellationToken ct);
+    Task<bool> IsTokenBlacklistedAsync(string token);
 }

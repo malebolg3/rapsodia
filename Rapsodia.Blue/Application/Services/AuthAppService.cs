@@ -2,12 +2,13 @@
 // Copyright (C) 2026 Th1eros
 
 using System.IdentityModel.Tokens.Jwt;
-using System.Net;
-using System.Net.Mail;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using StackExchange.Redis;
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Application.DTOs.Auth;
 using Rapsodia.Blue.Application.Interfaces;
@@ -20,23 +21,27 @@ namespace Rapsodia.Blue.Application.Services;
 public class AuthAppService : IAuthService
 {
     private readonly BlueDbContext _db;
-    private readonly Dictionary<string, (string Code, DateTime Expires, AuthorizeRequest Request)> _pending2FA = new();
-    private readonly List<SessionInfo> _activeSessions = new();
-    private readonly Random _random = new();
+    private readonly IConnectionMultiplexer _redis;
 
-    public AuthAppService(BlueDbContext db)
+    private const string SESSION_KEY = "sessions";
+    private const string BLACKLIST_PREFIX = "blacklist:";
+    private const string FA2_PREFIX = "2fa:";
+
+    public AuthAppService(BlueDbContext db, IConnectionMultiplexer redis)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _redis = redis ?? throw new ArgumentNullException(nameof(redis));
     }
+
+    private IDatabase RedisDB => _redis.GetDatabase();
 
     public async Task<Result<AuthResultDTO>> LoginAsync(LoginRequest req, CancellationToken ct)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == req.Username && u.DeletedAt == null, ct);
-        if (user is null || !VerifyPassword(req.Password, user.PasswordHash))
+        if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Result<AuthResultDTO>.Fail("Invalid credentials");
 
-        var token = GenerateToken(user);
-        return Result<AuthResultDTO>.Ok(token);
+        return Result<AuthResultDTO>.Ok(GenerateToken(user, null, null, null));
     }
 
     public async Task<Result<AuthResultDTO>> RegisterAsync(RegisterRequest req, CancellationToken ct)
@@ -44,48 +49,56 @@ public class AuthAppService : IAuthService
         if (await _db.Users.AnyAsync(u => u.Username == req.Username, ct))
             return Result<AuthResultDTO>.Fail("Username already exists");
 
-        var user = new User(req.Username, HashPassword(req.Password), "Analyst", "blue");
+        var user = new User(req.Username, BCrypt.Net.BCrypt.HashPassword(req.Password), "Analyst", "blue");
         _db.Users.Add(user);
         await _db.SaveChangesAsync(ct);
 
-        var token = GenerateToken(user);
-        return Result<AuthResultDTO>.Ok(token);
+        return Result<AuthResultDTO>.Ok(GenerateToken(user, null, null, null));
     }
 
     public async Task<Result<AuthResultDTO>> RefreshTokenAsync(RefreshTokenRequest req, CancellationToken ct)
     {
+        if (await IsTokenBlacklistedAsync(req.Token))
+            return Result<AuthResultDTO>.Fail("Token revoked");
+
         var principal = ValidateToken(req.Token);
-        if (principal is null)
-            return Result<AuthResultDTO>.Fail("Invalid token");
+        if (principal is null) return Result<AuthResultDTO>.Fail("Invalid token");
 
         var userId = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)!.Value);
         var user = await _db.Users.FindAsync(new object[] { userId }, ct);
-        if (user is null || user.DeletedAt != null)
-            return Result<AuthResultDTO>.Fail("User not found");
+        if (user is null || user.DeletedAt != null) return Result<AuthResultDTO>.Fail("User not found");
 
-        var token = GenerateToken(user);
-        return Result<AuthResultDTO>.Ok(token);
+        return Result<AuthResultDTO>.Ok(GenerateToken(user, null, null, null));
     }
 
-    public Task<Result<bool>> LogoutAsync(ClaimsPrincipal user, CancellationToken ct)
-        => Task.FromResult(Result<bool>.Ok(true));
+    public async Task<Result<bool>> LogoutAsync(ClaimsPrincipal user, CancellationToken ct)
+    {
+        var token = user.FindFirst("jti")?.Value
+                    ?? user.FindFirst("token")?.Value;
+
+        if (string.IsNullOrEmpty(token))
+            return Result<bool>.Ok(true);
+
+        var expClaim = user.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
+        if (long.TryParse(expClaim, out var expUnix))
+        {
+            var expiry = DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime;
+            var ttl = expiry - DateTime.UtcNow;
+            if (ttl > TimeSpan.Zero)
+                await RedisDB.StringSetAsync($"{BLACKLIST_PREFIX}{token}", "1", ttl);
+        }
+
+        return Result<bool>.Ok(true);
+    }
 
     public async Task<Result<AuthResultDTO>> GetCurrentUserAsync(ClaimsPrincipal principal, CancellationToken ct)
     {
         var userId = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)!.Value);
         var user = await _db.Users.FindAsync(new object[] { userId }, ct);
-        
+
         return user is null || user.DeletedAt != null
-            ? Result<AuthResultDTO>.Fail("User not found") 
-            : Result<AuthResultDTO>.Ok(new AuthResultDTO
-            {
-                UserId = user.Id,
-                Username = user.Username,
-                Token = "",
-                RefreshToken = "",
-                ExpiresAt = DateTime.UtcNow,
-                AllowedModules = user.AllowedModules
-            });
+            ? Result<AuthResultDTO>.Fail("User not found")
+            : Result<AuthResultDTO>.Ok(new AuthResultDTO { UserId = user.Id, Username = user.Username, ExpiresAt = DateTime.UtcNow, AllowedModules = user.AllowedModules ?? string.Empty });
     }
 
     public async Task<Result<AuthResultDTO>> UpdateProfileAsync(ClaimsPrincipal principal, UpdateProfileRequest req, CancellationToken ct)
@@ -93,19 +106,12 @@ public class AuthAppService : IAuthService
         var userId = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)!.Value);
         var user = await _db.Users.FindAsync(new object[] { userId }, ct);
         if (user is null || user.DeletedAt != null) return Result<AuthResultDTO>.Fail("User not found");
-        
+
         if (!string.IsNullOrEmpty(req.Email)) user.SetEmail(req.Email);
         if (!string.IsNullOrEmpty(req.FullName)) user.SetFullName(req.FullName);
         await _db.SaveChangesAsync(ct);
-        
-        return Result<AuthResultDTO>.Ok(new AuthResultDTO
-        {
-            UserId = user.Id,
-            Username = user.Username,
-            Token = "",
-            RefreshToken = "",
-            ExpiresAt = DateTime.UtcNow
-        });
+
+        return Result<AuthResultDTO>.Ok(new AuthResultDTO { UserId = user.Id, Username = user.Username, ExpiresAt = DateTime.UtcNow });
     }
 
     public async Task<Result<bool>> ChangePasswordAsync(ClaimsPrincipal principal, ChangePasswordRequest req, CancellationToken ct)
@@ -114,10 +120,9 @@ public class AuthAppService : IAuthService
         var user = await _db.Users.FindAsync(new object[] { userId }, ct);
         if (user is null || user.DeletedAt != null) return Result<bool>.Fail("User not found");
 
-        if (!VerifyPassword(req.CurrentPassword, user.PasswordHash))
-            return Result<bool>.Fail("Current password is incorrect");
+        if (!BCrypt.Net.BCrypt.Verify(req.CurrentPassword, user.PasswordHash)) return Result<bool>.Fail("Current password is incorrect");
 
-        user.SetPasswordHash(HashPassword(req.NewPassword));
+        user.SetPasswordHash(BCrypt.Net.BCrypt.HashPassword(req.NewPassword));
         await _db.SaveChangesAsync(ct);
         return Result<bool>.Ok(true);
     }
@@ -125,242 +130,160 @@ public class AuthAppService : IAuthService
     public async Task<Result<AuthorizeResponse>> RequestAuthorizationAsync(AuthorizeRequest req, CancellationToken ct)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == req.Username && u.DeletedAt == null, ct);
-        if (user is null || !VerifyPassword(req.Password, user.PasswordHash))
+        if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Result<AuthorizeResponse>.Fail("Invalid credentials");
 
-        var code = _random.Next(100000, 999999).ToString();
-        _pending2FA[req.Username] = (code, DateTime.UtcNow.AddMinutes(5), req);
+        var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
+        var key = $"{FA2_PREFIX}{req.Username}";
+        var value = $"{code}|{req.Service}|{req.Scope}|{req.ExpiresIn}";
+
+        await RedisDB.StringSetAsync(key, value, TimeSpan.FromMinutes(5));
         Console.WriteLine($"2FA CODE for {req.Username}: {code}");
-        
-        _ = Task.Run(() => SendEmailCode(user.Username + "@rapsodia.local", code), ct);
-        
-        return Result<AuthorizeResponse>.Ok(new AuthorizeResponse
-        {
-            Requires2FA = true,
-            Message = "2FA code sent to email and console.",
-            Username = req.Username
-        });
+
+        return Result<AuthorizeResponse>.Ok(new AuthorizeResponse { Requires2FA = true, Message = "2FA code generated.", Username = req.Username });
     }
 
-    public Task<Result<SessionInfo>> Verify2FAAsync(Verify2FARequest req, CancellationToken ct)
+    public async Task<Result<SessionInfo>> Verify2FAAsync(Verify2FARequest req, CancellationToken ct)
     {
-        if (!_pending2FA.TryGetValue(req.Username, out var pending))
-            return Task.FromResult(Result<SessionInfo>.Fail("No pending authorization"));
-        
-        if (pending.Expires < DateTime.UtcNow)
+        var key = $"{FA2_PREFIX}{req.Username}";
+        var stored = await RedisDB.StringGetAsync(key);
+
+        if (!stored.HasValue)
+            return Result<SessionInfo>.Fail("No pending authorization");
+
+        var parts = stored.ToString().Split('|');
+        if (parts.Length < 4)
         {
-            _pending2FA.Remove(req.Username);
-            return Task.FromResult(Result<SessionInfo>.Fail("2FA code expired"));
+            await RedisDB.KeyDeleteAsync(key);
+            return Result<SessionInfo>.Fail("Invalid 2FA data");
         }
-        
-        if (pending.Code != req.Code)
-            return Task.FromResult(Result<SessionInfo>.Fail("Invalid 2FA code"));
-        
-        _pending2FA.Remove(req.Username);
-        
-        var user = _db.Users.First(u => u.Username == req.Username && u.DeletedAt == null);
-        var token = GenerateScopedToken(user, pending.Request.Service, pending.Request.Scope, pending.Request.ExpiresIn);
-        
+
+        var code = parts[0];
+        var service = parts[1];
+        var scope = parts[2];
+        var expiresIn = parts[3];
+
+        if (code != req.Code)
+            return Result<SessionInfo>.Fail("Invalid 2FA code");
+
+        await RedisDB.KeyDeleteAsync(key);
+
+        var user = await _db.Users.FirstAsync(u => u.Username == req.Username && u.DeletedAt == null, ct);
+        var token = GenerateToken(user, service, scope, expiresIn);
+
         var session = new SessionInfo
         {
+            Id = Guid.NewGuid().ToString("N")[..12],
             Username = req.Username,
-            Service = pending.Request.Service,
-            Scope = pending.Request.Scope,
+            Service = service,
+            Scope = scope,
             Token = token.Token,
             AuthorizedAt = DateTime.UtcNow,
             ExpiresAt = token.ExpiresAt,
             AuthorizedBy = "admin",
             IP = "localhost"
         };
-        
-        _activeSessions.Add(session);
-        
-        return Task.FromResult(Result<SessionInfo>.Ok(session));
+
+        await RedisDB.HashSetAsync(SESSION_KEY, session.Id, JsonSerializer.Serialize(session));
+
+        return Result<SessionInfo>.Ok(session);
     }
 
-    public Task<Result<List<SessionInfo>>> GetActiveSessionsAsync(CancellationToken ct)
+    public async Task<Result<List<SessionInfo>>> GetActiveSessionsAsync(CancellationToken ct)
     {
-        var sessions = _activeSessions.Where(s => s.IsActive).ToList();
-        return Task.FromResult(Result<List<SessionInfo>>.Ok(sessions));
+        var entries = await RedisDB.HashGetAllAsync(SESSION_KEY);
+        var sessions = entries
+            .Select(e => JsonSerializer.Deserialize<SessionInfo>(e.Value!))
+            .Where(s => s != null && s.IsActive)
+            .Select(s => s!)
+            .ToList();
+
+        return Result<List<SessionInfo>>.Ok(sessions);
     }
 
-    public Task<Result<bool>> RevokeSessionAsync(string sessionId, CancellationToken ct)
+    public async Task<Result<bool>> RevokeSessionAsync(string sessionId, CancellationToken ct)
     {
-        var session = _activeSessions.FirstOrDefault(s => s.Id == sessionId);
+        var data = await RedisDB.HashGetAsync(SESSION_KEY, sessionId);
+        if (!data.HasValue)
+            return Result<bool>.Fail("Session not found");
+
+        var session = JsonSerializer.Deserialize<SessionInfo>(data!);
         if (session is null)
-            return Task.FromResult(Result<bool>.Fail("Session not found"));
-        
+            return Result<bool>.Fail("Session not found");
+
         session.IsActive = false;
-        return Task.FromResult(Result<bool>.Ok(true));
+        await RedisDB.HashSetAsync(SESSION_KEY, sessionId, JsonSerializer.Serialize(session));
+
+        return Result<bool>.Ok(true);
     }
 
-    private static string HashPassword(string password)
+    public Task<bool> IsTokenBlacklistedAsync(string token)
     {
-        return BCrypt.Net.BCrypt.HashPassword(password);
+        return RedisDB.KeyExistsAsync($"{BLACKLIST_PREFIX}{token}");
     }
 
-    private static bool VerifyPassword(string password, string hash)
+    private static AuthResultDTO GenerateToken(User user, string? service, string? scope, string? expiresIn)
     {
-        return BCrypt.Net.BCrypt.Verify(password, hash);
-    }
-
-    private AuthResultDTO GenerateToken(User user)
-    {
-        var (authKey, authIss, authAud) = GetAuthConfig();
-
+        var authKey = Environment.GetEnvironmentVariable("AUTH_KEY") ?? throw new InvalidOperationException("AUTH_KEY nula");
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(authKey));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, user.Role),
-            new("allowed_modules", user.AllowedModules)
-        };
 
-        var expires = DateTime.UtcNow.AddHours(8);
-        
-        var tokenDescriptor = new SecurityTokenDescriptor
-        {
-            Subject = new ClaimsIdentity(claims),
-            Expires = expires,
-            Issuer = authIss,
-            Audience = authAud,
-            SigningCredentials = creds
-        };
-        
-        var handler = new JwtSecurityTokenHandler();
-        var token = handler.CreateToken(tokenDescriptor);
-
-        return new AuthResultDTO
-        {
-            UserId = user.Id,
-            Username = user.Username,
-            Token = handler.WriteToken(token),
-            RefreshToken = Guid.NewGuid().ToString("N"),
-            ExpiresAt = expires,
-            AllowedModules = user.AllowedModules
-        };
-    }
-
-    private AuthResultDTO GenerateScopedToken(User user, string service, string scope, string expiresIn)
-    {
-        var (authKey, authIss, authAud) = GetAuthConfig();
-        
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(authKey));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        
-        var hours = expiresIn switch
-        {
-            "1h" => 1,
-            "24h" => 24,
-            _ => 8
-        };
-        
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.Username),
-            new("scope", $"{service}:{scope}"),
-            new("service", service),
-            new("authorized_by", "admin"),
-            new(ClaimTypes.Role, user.Role),
-            new("allowed_modules", user.AllowedModules)
-        };
-        
+        var hours = expiresIn switch { "1h" => 1, "24h" => 24, _ => 8 };
         var expires = DateTime.UtcNow.AddHours(hours);
-        
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.Username),
+            new(ClaimTypes.Role, user.Role),
+            new("allowed_modules", user.AllowedModules ?? string.Empty)
+        };
+
+        if (!string.IsNullOrEmpty(service) && !string.IsNullOrEmpty(scope))
+        {
+            claims.Add(new("scope", $"{service}:{scope}"));
+            claims.Add(new("service", service));
+        }
+
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
             Expires = expires,
-            Issuer = authIss,
-            Audience = authAud,
-            SigningCredentials = creds
+            Issuer = Environment.GetEnvironmentVariable("AUTH_ISS"),
+            Audience = Environment.GetEnvironmentVariable("AUTH_AUD"),
+            SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
         };
-        
         var handler = new JwtSecurityTokenHandler();
-        var token = handler.CreateToken(tokenDescriptor);
-        
+
         return new AuthResultDTO
         {
             UserId = user.Id,
             Username = user.Username,
-            Token = handler.WriteToken(token),
+            Token = handler.WriteToken(handler.CreateToken(tokenDescriptor)),
             RefreshToken = Guid.NewGuid().ToString("N"),
             ExpiresAt = expires,
-            AllowedModules = user.AllowedModules
+            AllowedModules = user.AllowedModules ?? string.Empty
         };
     }
 
-    private ClaimsPrincipal? ValidateToken(string token)
+    private static ClaimsPrincipal? ValidateToken(string token)
     {
         try
         {
-            var (authKey, authIss, authAud) = GetAuthConfig();
-
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(authKey));
-            var handler = new JwtSecurityTokenHandler();
-            return handler.ValidateToken(token, new TokenValidationParameters
+            var authKey = Environment.GetEnvironmentVariable("AUTH_KEY") ?? throw new InvalidOperationException("AUTH_KEY nula");
+            return new JwtSecurityTokenHandler().ValidateToken(token, new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = key,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(authKey)),
                 ValidateIssuer = true,
-                ValidIssuer = authIss,
+                ValidIssuer = Environment.GetEnvironmentVariable("AUTH_ISS"),
                 ValidateAudience = true,
-                ValidAudience = authAud,
+                ValidAudience = Environment.GetEnvironmentVariable("AUTH_AUD"),
                 ValidateLifetime = true
             }, out _);
         }
         catch
         {
             return null;
-        }
-    }
-
-    private static (string key, string issuer, string audience) GetAuthConfig()
-    {
-        var authKey = Environment.GetEnvironmentVariable("AUTH_KEY") 
-            ?? throw new InvalidOperationException("AUTH_KEY nao configurada");
-        
-        var authIss = Environment.GetEnvironmentVariable("AUTH_ISS") 
-            ?? throw new InvalidOperationException("AUTH_ISS nao configurada");
-        
-        var authAud = Environment.GetEnvironmentVariable("AUTH_AUD") 
-            ?? throw new InvalidOperationException("AUTH_AUD nao configurada");
-        
-        return (authKey, authIss, authAud);
-    }
-
-    private async Task SendEmailCode(string email, string code)
-    {
-        try
-        {
-            var smtpHost = Environment.GetEnvironmentVariable("SMTP_HOST") ?? "smtp.gmail.com";
-            var smtpPort = int.Parse(Environment.GetEnvironmentVariable("SMTP_PORT") ?? "587");
-            var smtpUser = Environment.GetEnvironmentVariable("SMTP_USER");
-            var smtpPass = Environment.GetEnvironmentVariable("SMTP_PASS");
-            
-            if (string.IsNullOrEmpty(smtpUser) || string.IsNullOrEmpty(smtpPass))
-            {
-                Console.WriteLine($"[EMAIL] SMTP not configured. Code for {email}: {code}");
-                return;
-            }
-            
-            using var smtp = new SmtpClient(smtpHost, smtpPort);
-            smtp.Credentials = new NetworkCredential(smtpUser, smtpPass);
-            smtp.EnableSsl = true;
-            
-            using var message = new MailMessage(smtpUser, email, "Rapsodia 2FA - Codigo de Acesso", 
-                $"Seu codigo de verificacao: {code}\n\nValido por 5 minutos.");
-            
-            await smtp.SendMailAsync(message);
-            Console.WriteLine($"[EMAIL] 2FA code sent to {email}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[EMAIL] Failed: {ex.Message}. Code for {email}: {code}");
         }
     }
 }

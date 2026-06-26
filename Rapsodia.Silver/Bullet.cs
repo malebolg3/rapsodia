@@ -71,6 +71,11 @@ builder.Services.AddHttpClient("AIAgent", c =>
     c.Timeout = TimeSpan.FromMinutes(5);
 });
 
+builder.Services.AddHttpClient<IChatService, ChatService>(client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(5);
+});
+
 builder.Services.AddHttpClient<IObsidianService, ObsidianService>(client =>
 {
     client.BaseAddress = new Uri(Environment.GetEnvironmentVariable("DOC_URL") 
@@ -94,6 +99,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<IAgentRepository, AgentRepository>();
 builder.Services.AddScoped<IMemoryGraphRepository, MemoryGraphRepository>();
 builder.Services.AddScoped<IMemoryService, MemoryService>();
+builder.Services.AddHttpClient<EmbeddingService>();
 
 var enableOrleans = Environment.GetEnvironmentVariable("ENB_ORLN") ?? builder.Configuration["ENB_ORLN"];
 if (enableOrleans?.ToLower() == "true")

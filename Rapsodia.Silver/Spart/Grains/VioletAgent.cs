@@ -1,39 +1,85 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Th1eros
 
-using System.Diagnostics;
+using System.Net.Http.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Orleans;
-using Rapsodia.Silver.Domain.Interfaces;
+using Rapsodia.Silver.Application.DTOs;
+using Rapsodia.Silver.Application.Interfaces;
 using Rapsodia.Silver.Application.Services;
+using Rapsodia.Silver.Domain.Interfaces;
 using Rapsodia.Silver.Spart.Interfaces;
 
 namespace Rapsodia.Silver.Spart.Grains;
 
-public class VioletAgent : Grain, IVioletAgent
+public class VioletAgent : HybridAgent, IVioletAgent
 {
     private readonly IHttpClientFactory _http;
-    private readonly IObsidianService _obsidian;
-    private readonly IConfiguration _cfg;
-    private readonly ILogger<VioletAgent> _logger;
-    private readonly EventPublisher _publisher;
-    private readonly TelemetryService _telemetry;
+    private IConfiguration _cfg = null!;
+    private EventPublisher _publisher = null!;
+    private TelemetryService _telemetry = null!;
     private int _labCount;
     private readonly List<LabInfo> _activeLabs = new();
 
-    public VioletAgent(IHttpClientFactory http, IObsidianService obsidian, IConfiguration cfg, ILogger<VioletAgent> logger, EventPublisher publisher, TelemetryService telemetry)
+    public VioletAgent(IHttpClientFactory http)
     {
-        _http = http;
-        _obsidian = obsidian;
-        _cfg = cfg;
-        _logger = logger;
-        _publisher = publisher;
-        _telemetry = telemetry;
+        _http = http ?? throw new ArgumentNullException(nameof(http));
+    }
+
+    public Task InitializeAsync(
+        IChatService chat,
+        IMemoryService memory,
+        IObsidianService obsidian,
+        IConfiguration cfg,
+        ILogger<VioletAgent> logger,
+        EventPublisher publisher,
+        TelemetryService telemetry)
+    {
+        _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
+        _publisher = publisher ?? throw new ArgumentNullException(nameof(publisher));
+        _telemetry = telemetry ?? throw new ArgumentNullException(nameof(telemetry));
+
+        Initialize(
+            chat, memory, obsidian, logger,
+            agentName: "VioletAgent",
+            agentColor: "violet",
+            context: "Você é um orquestrador de ambientes isolados de cibersegurança. Gerencie laboratórios, honeypots e cyber ranges. Otimize recursos e sugira novos ambientes baseado em necessidades de teste.",
+            startAutonomous: true
+        );
+
+        return Task.CompletedTask;
+}
+
+    protected override async Task AutonomousTick()
+    {
+        var expired = await CleanupExpiredAsync();
+        if (expired > 0)
+        {
+            _logger.LogInformation("Violet: {Count} labs expirados removidos", expired);
+        }
+
+        if (_activeLabs.Count < 3)
+        {
+            var decision = await _chat.SendMessageAsync(new ChatRequest(
+                ConversationId: Guid.NewGuid(),
+                Message: $"Existem {_activeLabs.Count} laboratórios ativos. É recomendado criar mais? Responda com 'SIM: <tipo>' ou 'NAO'."
+            ));
+
+            var response = decision.Data?.Content ?? "";
+            if (response.StartsWith("SIM:", StringComparison.OrdinalIgnoreCase))
+            {
+                await CreateLabAsync("auto-lab", "kalilinux/kali-rolling:latest");
+                _logger.LogInformation("Violet: Auto-provisionamento de lab");
+            }
+        }
     }
 
     public Task<string> GetStatusAsync()
     {
+        var status = _isAutonomous ? "AUTÔNOMO" : "REATIVO";
         var byLevel = _activeLabs.GroupBy(l => l.Level).ToDictionary(g => g.Key, g => g.Count());
-        return Task.FromResult($"Violet Agent | Labs: {_labCount} | Por nível: {string.Join(", ", byLevel.Select(kv => $"N{kv.Key}={kv.Value}"))}");
+        return Task.FromResult($"Violet Agent [{status}] | Labs: {_labCount} | Por nível: {string.Join(", ", byLevel.Select(kv => $"N{kv.Key}={kv.Value}"))}");
     }
 
     public async Task<string> CreateLabAsync(string name, string image)
@@ -64,7 +110,7 @@ public class VioletAgent : Grain, IVioletAgent
 
     public async Task<string> DeployHoneypotAsync(string name, string honeypotType, int ttlMinutes = 480)
     {
-        var image = honeypotType switch
+        var image = honeypotType.ToLowerInvariant() switch
         {
             "ssh" => "cowrie/cowrie:latest",
             "http" => "nginx:alpine",
@@ -79,7 +125,7 @@ public class VioletAgent : Grain, IVioletAgent
             ["LOG_LEVEL"] = "debug"
         };
 
-        var ports = honeypotType switch
+        var ports = honeypotType.ToLowerInvariant() switch
         {
             "ssh" => new List<string> { "2222:22" },
             "http" => new List<string> { "8080:80" },
@@ -151,7 +197,7 @@ public class VioletAgent : Grain, IVioletAgent
 
     public async Task<string> DeployCyberRangeAsync(string name, string scenario, int ttlMinutes = 1440)
     {
-        var scenarios = new Dictionary<string, string>
+        var scenarios = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["ransomware"] = "kalilinux/kali-rolling:latest,ubuntu:22.04,windows:servercore",
             ["phishing"] = "kalilinux/kali-rolling:latest,ubuntu:22.04,mailhog/mailhog:latest",
@@ -195,17 +241,18 @@ public class VioletAgent : Grain, IVioletAgent
 
     public async Task<bool> DestroyLabAsync(string labId)
     {
-        _labCount--;
-        _activeLabs.RemoveAll(l => l.Id == labId);
-
-        var client = _http.CreateClient();
+        var client = _http.CreateClient("VioletAgentClient");
         var vltPort = _cfg["PORT_VLT"] ?? "5075";
 
         try
         {
-            await client.DeleteAsync($"http://localhost:{vltPort}/api/lab/{labId}");
-            await _obsidian.AppendNoteAsync("labs", $"### 🗑️ Lab {labId} destroyed at {DateTime.UtcNow}\n");
+            var response = await client.DeleteAsync($"http://localhost:{vltPort}/api/lab/{labId}");
+            if (!response.IsSuccessStatusCode) return false;
 
+            _labCount--;
+            _activeLabs.RemoveAll(l => l.Id == labId);
+            
+            await _obsidian.AppendNoteAsync("labs", $"### 🗑️ Lab {labId} destroyed at {DateTime.UtcNow}\n");
             await _publisher.PublishAsync("Default", "lab-events", Guid.NewGuid(), new
             {
                 type = "lab.destroyed",
@@ -215,15 +262,16 @@ public class VioletAgent : Grain, IVioletAgent
 
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Violet: Erro ao destruir lab {LabId}", labId);
             return false;
         }
     }
 
     public async Task<string> GetLabStatusAsync(string labId)
     {
-        var client = _http.CreateClient();
+        var client = _http.CreateClient("VioletAgentClient");
         var vltPort = _cfg["PORT_VLT"] ?? "5075";
 
         try
@@ -231,32 +279,37 @@ public class VioletAgent : Grain, IVioletAgent
             var response = await client.GetAsync($"http://localhost:{vltPort}/api/lab/{labId}");
             return await response.Content.ReadAsStringAsync();
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Violet: Erro ao obter status do lab {LabId}", labId);
             return "Violet API unreachable";
         }
     }
 
     public Task<List<LabInfo>> ListLabsAsync()
     {
-        return Task.FromResult(_activeLabs);
+        return Task.FromResult(_activeLabs.ToList());
     }
 
     public async Task<int> CleanupExpiredAsync()
     {
         var expired = _activeLabs.Where(l => l.ExpiresAt < DateTime.UtcNow).ToList();
+        int successCount = 0;
+        
         foreach (var lab in expired)
         {
-            await DestroyLabAsync(lab.Id);
+            if (await DestroyLabAsync(lab.Id))
+            {
+                successCount++;
+            }
         }
-        return expired.Count;
+        return successCount;
     }
 
     private async Task<string> CreateEnvironmentAsync(string name, string image, int level, int ttlMinutes,
         Dictionary<string, string>? envVars = null, List<string>? ports = null)
     {
-        _labCount++;
-        var client = _http.CreateClient();
+        var client = _http.CreateClient("VioletAgentClient");
         var vltPort = _cfg["PORT_VLT"] ?? "5075";
         var labId = Guid.NewGuid().ToString("N")[..12];
 
@@ -273,21 +326,25 @@ public class VioletAgent : Grain, IVioletAgent
                 ports
             });
 
-            var result = await response.Content.ReadFromJsonAsync<LabCreateResponse>();
-            labId = result?.ContainerId ?? labId;
-
-            _activeLabs.Add(new LabInfo
+            if (response.IsSuccessStatusCode)
             {
-                Id = labId,
-                Name = name,
-                Level = level,
-                Image = image,
-                CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(ttlMinutes)
-            });
+                var result = await response.Content.ReadFromJsonAsync<LabCreateResponse>();
+                labId = result?.ContainerId ?? labId;
 
-            var levelLabel = level switch { 1 => "Básico", 2 => "Sandbox", 3 => "Honeypot", 4 => "SOC", 5 => "Cyber Range", _ => "Custom" };
-            _logger.LogInformation("Violet: {Level} '{Name}' criado ({LabId})", levelLabel, name, labId);
+                _labCount++;
+                _activeLabs.Add(new LabInfo
+                {
+                    Id = labId,
+                    Name = name,
+                    Level = level,
+                    Image = image,
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(ttlMinutes)
+                });
+
+                var levelLabel = level switch { 1 => "Básico", 2 => "Sandbox", 3 => "Honeypot", 4 => "SOC", 5 => "Cyber Range", _ => "Custom" };
+                _logger.LogInformation("Violet: {Level} '{Name}' criado ({LabId})", levelLabel, name, labId);
+            }
         }
         catch (Exception ex)
         {

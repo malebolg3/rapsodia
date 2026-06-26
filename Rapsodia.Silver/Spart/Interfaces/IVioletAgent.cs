@@ -4,7 +4,7 @@
 namespace Rapsodia.Silver.Spart.Interfaces;
 using Rapsodia.Silver.Spart.Grains;
 
-public interface IVioletAgent : IGrainWithIntegerKey
+public interface IVioletAgent : IGrainWithGuidKey
 {
     Task<string> GetStatusAsync();
     Task<string> CreateLabAsync(string name, string image);
