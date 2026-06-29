@@ -18,4 +18,5 @@ public interface IIncidentService
     Task<Result<IncidentCommentDTO>> AddCommentAsync(int id, ClaimsPrincipal user, AddCommentRequest request, CancellationToken ct);
     Task<Result<bool>> CloseAsync(int id, ClaimsPrincipal user, CancellationToken ct);
     Task<Result<IncidentStatsDTO>> GetStatsAsync(CancellationToken ct);
+    Task<Result<PagedResult<RecentActivityDTO>>> GetRecentActivityAsync(ActivityFilterDTO filter, CancellationToken ct);
 }

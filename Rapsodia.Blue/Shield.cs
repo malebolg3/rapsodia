@@ -67,6 +67,8 @@ builder.Services.AddScoped<ISyncRepositoryPort, SyncRepository>();
 builder.Services.AddScoped<IAssetRepositoryPort, AssetRepository>();
 builder.Services.AddScoped<IVulnRepositoryPort, VulnRepository>();
 builder.Services.AddScoped<SyncOrchestratorService>();
+builder.Services.AddScoped<IIncidentRepository, IncidentRepository>();
+builder.Services.AddScoped<IComplianceService, ComplianceService>();
 
 var authKey = Environment.GetEnvironmentVariable("AUTH_KEY") ?? throw new InvalidOperationException("AUTH_KEY obrigatoria.");
 var authIss = Environment.GetEnvironmentVariable("AUTH_ISS") ?? throw new InvalidOperationException("AUTH_ISS obrigatoria.");

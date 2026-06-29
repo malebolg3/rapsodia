@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Th1eros
 
 using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Application.Interfaces;
 using Rapsodia.Blue.Domain.Common;
@@ -10,151 +12,123 @@ namespace Rapsodia.Blue.Application.Services;
 
 public class DashboardService : IDashboardService
 {
-    private readonly IConfiguration _cfg;
-    private readonly bool _mock;
+    private readonly IAssetService _assetService;
+    private readonly IVulnService _vulnService;
+    private readonly IIncidentService _incidentService;
+    private readonly IComplianceService _complianceService;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IConfiguration _config;
 
-    public DashboardService(IConfiguration cfg)
+    public DashboardService(
+        IAssetService assetService,
+        IVulnService vulnService,
+        IIncidentService incidentService,
+        IComplianceService complianceService,
+        IHttpClientFactory httpClientFactory,
+        IConfiguration config)
     {
-        _cfg = cfg;
-        _mock = cfg["DSH_MOCK"] == "true" || string.IsNullOrEmpty(cfg["DB_HOST"]);
+        _assetService = assetService ?? throw new ArgumentNullException(nameof(assetService));
+        _vulnService = vulnService ?? throw new ArgumentNullException(nameof(vulnService));
+        _incidentService = incidentService ?? throw new ArgumentNullException(nameof(incidentService));
+        _complianceService = complianceService ?? throw new ArgumentNullException(nameof(complianceService));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+        _config = config ?? throw new ArgumentNullException(nameof(config));
     }
 
-    public Task<Result<DashboardDTO>> GetSummaryAsync(ClaimsPrincipal user, CancellationToken ct)
+    public async Task<Result<DashboardSummaryDTO>> GetSummaryAsync(ClaimsPrincipal user, CancellationToken ct)
     {
-        return Task.FromResult(Result<DashboardDTO>.Ok(new DashboardDTO
+        try
         {
-            TotalAssets = 156,
-            TotalVulnerabilities = 423,
-            ActiveIncidents = 7,
-            CompletedScans = 89,
-            VulnsBySeverity = new Dictionary<string, int>
+            var silverClient = _httpClientFactory.CreateClient("SilverClient");
+
+            var assetsTask = _assetService.GetStatsAsync(ct);
+            var vulnsTask = _vulnService.GetStatsAsync(ct);
+            var incidentsTask = _incidentService.GetStatsAsync(ct);
+            var complianceTask = _complianceService.GetStatusAsync(ct);
+            var agentsTask = silverClient.GetAsync("/api/Orchestration/status", ct);
+
+            await Task.WhenAll(assetsTask, vulnsTask, incidentsTask, complianceTask, agentsTask);
+
+            using var httpResponse = await agentsTask;
+            if (!httpResponse.IsSuccessStatusCode)
             {
-                ["Critical"] = 12,
-                ["High"] = 45,
-                ["Medium"] = 134,
-                ["Low"] = 232
-            },
-            RecentActivities = new List<RecentActivityDTO>
-            {
-                new() { ActivityType = "scan", Description = "Network scan completed on 192.168.1.0/24", Timestamp = DateTime.UtcNow.AddHours(-1) },
-                new() { ActivityType = "vuln", Description = "Critical CVE-2024-4321 detected", Timestamp = DateTime.UtcNow.AddHours(-3) },
-                new() { ActivityType = "incident", Description = "Incident #7 resolved by Admin", Timestamp = DateTime.UtcNow.AddHours(-5) },
-                new() { ActivityType = "asset", Description = "New asset 'DB-Server-03' added", Timestamp = DateTime.UtcNow.AddHours(-8) },
-                new() { ActivityType = "scan", Description = "Vulnerability scan completed with 23 findings", Timestamp = DateTime.UtcNow.AddHours(-12) }
+                return Result<DashboardSummaryDTO>.Fail($"Falha na telemetria do Silver: {httpResponse.StatusCode}");
             }
-        }));
-    }
 
-    public Task<Result<AssetStatsDTO>> GetAssetStatsAsync(CancellationToken ct)
-    {
-        return Task.FromResult(Result<AssetStatsDTO>.Ok(new AssetStatsDTO
-        {
-            Total = 156,
-            Active = 142,
-            Inactive = 14,
-            ByType = new Dictionary<string, int>
+            var jsonStream = await httpResponse.Content.ReadAsStreamAsync(ct);
+            var agentsResponse = await JsonSerializer.DeserializeAsync<AgentStatusResponse>(jsonStream, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, ct);
+
+            var assets = await assetsTask;
+            var vulns = await vulnsTask;
+            var incidents = await incidentsTask;
+            var compliance = await complianceTask;
+
+            return Result<DashboardSummaryDTO>.Ok(new DashboardSummaryDTO
             {
-                ["Server"] = 45,
-                ["Workstation"] = 78,
-                ["Network"] = 18,
-                ["Database"] = 10,
-                ["Cloud"] = 5
-            }
-        }));
-    }
-
-    public Task<Result<VulnTrendDTO>> GetVulnTrendAsync(TrendFilterDTO filter, CancellationToken ct)
-    {
-        var dataPoints = new List<TrendDataPointDTO>();
-        var startDate = filter.StartDate ?? DateTime.UtcNow.AddDays(-30);
-        var endDate = filter.EndDate ?? DateTime.UtcNow;
-        var current = startDate;
-
-        while (current <= endDate)
-        {
-            dataPoints.Add(new TrendDataPointDTO
-            {
-                Date = current,
-                Count = Random.Shared.Next(5, 30),
-                Label = current.ToString("dd/MM")
+                SiemConnected = true,
+                Eps = "2.3k",
+                Uptime = "99.9%",
+                TotalAssets = assets.Data?.TotalCount ?? 0,
+                TotalVulns = vulns.Data?.TotalCount ?? 0,
+                ActiveIncidents = incidents.Data?.ActiveCount ?? 0,
+                Mttr = incidents.Data?.AverageMttr ?? 0,
+                ThreatFeed = MapThreatFeed(incidents.Data?.RecentLogs),
+                AttackSignatures = MapAttackSignatures(vulns.Data?.TopSignatures),
+                AssetExposure = MapAssetExposure(assets.Data?.TopRisky),
+                ComplianceStatus = MapCompliance(compliance.Data?.Items),
+                IncidentLog = MapIncidentLog(incidents.Data?.RecentLogs),
+                Agents = MapAgents(agentsResponse?.Agents),
+                GrafanaUrl = _config["GRAFANA_URL"] ?? "http://localhost:3000/d/blue-siem"
             });
-            current = current.AddDays(1);
         }
-
-        return Task.FromResult(Result<VulnTrendDTO>.Ok(new VulnTrendDTO
+        catch (Exception ex)
         {
-            DataPoints = dataPoints,
-            MetricType = filter.MetricType ?? "vulnerabilities"
-        }));
+            return Result<DashboardSummaryDTO>.Fail($"Erro ao montar dashboard: {ex.Message}");
+        }
     }
 
-    public Task<Result<RiskMatrixDTO>> GetRiskMatrixAsync(CancellationToken ct)
+    public Task<Result<AssetStatsDTO>> GetAssetStatsAsync(CancellationToken ct) => _assetService.GetStatsAsync(ct);
+    public Task<Result<VulnTrendDTO>> GetVulnTrendAsync(TrendFilterDTO filter, CancellationToken ct) => _vulnService.GetTrendAsync(filter, ct);
+    public Task<Result<RiskMatrixDTO>> GetRiskMatrixAsync(CancellationToken ct) => _assetService.GetRiskMatrixAsync(ct);
+    public Task<Result<ComplianceStatusDTO>> GetComplianceStatusAsync(CancellationToken ct) => _complianceService.GetStatusAsync(ct);
+    public Task<Result<PagedResult<RecentActivityDTO>>> GetRecentActivityAsync(ActivityFilterDTO filter, CancellationToken ct) => _incidentService.GetRecentActivityAsync(filter, ct);
+
+    private static List<ThreatFeedDTO> MapThreatFeed(object? recentLogs)
     {
-        return Task.FromResult(Result<RiskMatrixDTO>.Ok(new RiskMatrixDTO
-        {
-            ImpactVs = new Dictionary<string, int>
-            {
-                ["Critical-High"] = 5,
-                ["High-High"] = 12,
-                ["High-Medium"] = 8,
-                ["Medium-Medium"] = 25,
-                ["Low-Low"] = 45
-            },
-            TopRisks = new List<RiskItemDTO>
-            {
-                new() { AssetId = 10, AssetName = "File-Server-01", Score = 95, Level = "Critical" },
-                new() { AssetId = 15, AssetName = "Web-App-Prod", Score = 88, Level = "High" },
-                new() { AssetId = 22, AssetName = "DB-Master", Score = 82, Level = "High" },
-                new() { AssetId = 8, AssetName = "VPN-Gateway", Score = 75, Level = "Medium" },
-                new() { AssetId = 30, AssetName = "Email-Server", Score = 70, Level = "Medium" }
-            }
-        }));
+        if (recentLogs == null) return [];
+        return
+        [
+            new() { Timestamp = DateTime.UtcNow.AddHours(-1).ToString("O"), Severity = "High", Source = "SIEM", Event = "Activity detected", Status = "Investigating" }
+        ];
     }
 
-    public Task<Result<ComplianceStatusDTO>> GetComplianceStatusAsync(CancellationToken ct)
+    private static List<AttackSignatureDTO> MapAttackSignatures(object? topSignatures) => [];
+    private static List<AssetExposureDTO> MapAssetExposure(object? topRisky) => [];
+    private static List<ComplianceDTO> MapCompliance(object? items) => [];
+    private static List<IncidentLogDTO> MapIncidentLog(object? recentLogs) => [];
+
+    private static List<AgentDTO> MapAgents(AgentStatusAgents? agents)
     {
-        return Task.FromResult(Result<ComplianceStatusDTO>.Ok(new ComplianceStatusDTO
-        {
-            OverallScore = 78.5,
-            Items = new List<ComplianceItemDTO>
-            {
-                new() { Framework = "NIST", Control = "AC-1 Access Control Policy", Compliant = true, Score = 95 },
-                new() { Framework = "NIST", Control = "AC-2 Account Management", Compliant = true, Score = 88 },
-                new() { Framework = "NIST", Control = "AU-1 Audit Policy", Compliant = false, Score = 45 },
-                new() { Framework = "ISO 27001", Control = "A.9.2 User access", Compliant = true, Score = 90 },
-                new() { Framework = "ISO 27001", Control = "A.12.6 Vulnerability", Compliant = false, Score = 60 },
-                new() { Framework = "PCI DSS", Control = "1.1 Firewall Config", Compliant = true, Score = 92 },
-                new() { Framework = "PCI DSS", Control = "6.2 Patches", Compliant = false, Score = 55 }
-            }
-        }));
+        if (agents == null) return [];
+        return
+        [
+            new() { Name = "BLUE", Status = agents.Blue ?? "offline" },
+            new() { Name = "RED", Status = agents.Red ?? "offline" },
+            new() { Name = "VIOLET", Status = agents.Violet ?? "offline" },
+            new() { Name = "SILVER", Status = agents.Silver ?? "offline" }
+        ];
     }
+}
 
-    public Task<Result<PagedResult<RecentActivityDTO>>> GetRecentActivityAsync(ActivityFilterDTO filter, CancellationToken ct)
-    {
-        var activities = new List<RecentActivityDTO>
-        {
-            new() { ActivityType = "scan", Description = "Full vulnerability scan completed", Timestamp = DateTime.UtcNow.AddMinutes(-30) },
-            new() { ActivityType = "vuln", Description = "New CVE-2024-5678 identified", Timestamp = DateTime.UtcNow.AddHours(-1) },
-            new() { ActivityType = "incident", Description = "Incident #12 opened: Suspicious activity", Timestamp = DateTime.UtcNow.AddHours(-2) },
-            new() { ActivityType = "asset", Description = "Asset 'API-Gateway-02' modified", Timestamp = DateTime.UtcNow.AddHours(-3) },
-            new() { ActivityType = "user", Description = "User 'analyst1' logged in", Timestamp = DateTime.UtcNow.AddHours(-4) },
-            new() { ActivityType = "scan", Description = "Quick scan completed on 10 assets", Timestamp = DateTime.UtcNow.AddHours(-5) },
-            new() { ActivityType = "vuln", Description = "Patch applied to 3 critical vulns", Timestamp = DateTime.UtcNow.AddHours(-6) },
-            new() { ActivityType = "report", Description = "Monthly security report generated", Timestamp = DateTime.UtcNow.AddHours(-7) }
-        };
+internal class AgentStatusResponse
+{
+    public AgentStatusAgents? Agents { get; set; }
+}
 
-        var filtered = activities
-            .Where(a => string.IsNullOrEmpty(filter.ActivityType) || a.ActivityType == filter.ActivityType)
-            .Where(a => !filter.FromDate.HasValue || a.Timestamp >= filter.FromDate.Value)
-            .Where(a => !filter.ToDate.HasValue || a.Timestamp <= filter.ToDate.Value)
-            .ToList();
-
-        return Task.FromResult(Result<PagedResult<RecentActivityDTO>>.Ok(new PagedResult<RecentActivityDTO>
-        {
-            Items = filtered.Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize).ToList(),
-            TotalCount = filtered.Count,
-            Page = filter.Page,
-            PageSize = filter.PageSize
-        }));
-    }
+internal class AgentStatusAgents
+{
+    public string? Blue { get; set; }
+    public string? Red { get; set; }
+    public string? Violet { get; set; }
+    public string? Silver { get; set; }
 }

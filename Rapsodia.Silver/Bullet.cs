@@ -6,8 +6,6 @@ using System.Text;
 using System.Threading.RateLimiting;
 using DotNetEnv;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -70,11 +68,8 @@ builder.Services.AddHttpClient("AIAgent", c =>
     c.BaseAddress = new Uri(Environment.GetEnvironmentVariable("AI_URL") ?? "http://localhost:11434");
     c.Timeout = TimeSpan.FromMinutes(5);
 });
-
-builder.Services.AddHttpClient<IChatService, ChatService>(client =>
-{
-    client.Timeout = TimeSpan.FromMinutes(5);
-});
+;
+builder.Services.AddSingleton<IChatService, ChatService>();
 
 builder.Services.AddHttpClient<IObsidianService, ObsidianService>(client =>
 {

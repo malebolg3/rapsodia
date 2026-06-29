@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Application.Interfaces;
+using Rapsodia.Blue.Domain.Common;
 using Rapsodia.Blue.Domain.Entities;
 
 namespace Rapsodia.Blue.Application.Services;
@@ -18,7 +19,7 @@ public class AssetService : IAssetService
 
     public AssetService(IAssetRepositoryPort repository)
     {
-        _repository = repository;
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     }
 
     public async Task<ResponseModel<List<AssetResponse>>> ListAsync(CancellationToken ct = default)
@@ -59,13 +60,13 @@ public class AssetService : IAssetService
                 return ResponseModel<AssetResponse>.CreateError("Ja existe um asset com este nome");
 
             var asset = new Asset();
-                asset.Update(
-                    name: request.Name.Trim(),
-                    assetTypeId: request.TypeId,
-                    environment: request.Environment,
-                    isEnabled: request.Enabled,
-                    parentAssetId: request.ParentAssetId
-                );
+            asset.Update(
+                name: request.Name.Trim(),
+                assetTypeId: request.TypeId,
+                environment: request.Environment,
+                isEnabled: request.Enabled,
+                parentAssetId: request.ParentAssetId
+            );
 
             if (request.RelatedAssetIds?.Count > 0)
             {
@@ -227,6 +228,82 @@ public class AssetService : IAssetService
         }
     }
 
+    public async Task<Result<AssetStatsDTO>> GetStatsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var assets = await _repository.ListAllActiveAsync();
+            var active = assets.Where(a => a.DeletedAt == null).ToList();
+
+            return Result<AssetStatsDTO>.Ok(new AssetStatsDTO
+            {
+                Total = active.Count,
+                Active = active.Count(a => a.IsEnabled),
+                Inactive = active.Count(a => !a.IsEnabled),
+                TotalCount = active.Count,
+                ByType = active
+                    .GroupBy(a => a.AssetType?.Name ?? "Desconhecido")
+                    .ToDictionary(g => g.Key, g => g.Count()),
+                TopRisky = active
+                    .OrderByDescending(a => a.AssetVulns?.Count ?? 0)
+                    .Take(5)
+                    .Select(a => new AssetExposureDTO
+                    {
+                        Name = a.Name,
+                        Score = Math.Min(10.0, (a.AssetVulns?.Count ?? 0) * 2.0)
+                    })
+                    .ToList()
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<AssetStatsDTO>.Fail($"Erro ao buscar estatísticas de assets: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<RiskMatrixDTO>> GetRiskMatrixAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var assets = await _repository.ListAllActiveAsync();
+            var active = assets.Where(a => a.DeletedAt == null).ToList();
+
+            var riskItems = active.Select(a =>
+            {
+                var vulnCount = a.AssetVulns?.Count ?? 0;
+                var score = Math.Min(100, vulnCount * 10);
+                var level = score >= 80 ? "Critical" : score >= 60 ? "High" : score >= 40 ? "Medium" : "Low";
+
+                return new RiskItemDTO
+                {
+                    AssetId = a.Id,
+                    AssetName = a.Name,
+                    Score = score,
+                    Level = level
+                };
+            }).OrderByDescending(r => r.Score).Take(10).ToList();
+
+            var impactVs = new Dictionary<string, int>
+            {
+                ["Critical-High"] = riskItems.Count(r => r.Level == "Critical"),
+                ["High-High"] = riskItems.Count(r => r.Level == "High"),
+                ["High-Medium"] = riskItems.Count(r => r.Level == "Medium"),
+                ["Medium-Medium"] = 0,
+                ["Low-Low"] = riskItems.Count(r => r.Level == "Low")
+            };
+
+            return Result<RiskMatrixDTO>.Ok(new RiskMatrixDTO
+            {
+                ImpactVs = impactVs,
+                TopRisks = riskItems.Take(5).ToList()
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<RiskMatrixDTO>.Fail($"Erro ao buscar matriz de risco: {ex.Message}");
+        }
+    }
+
     private static AssetResponse MapToResponse(Asset asset)
     {
         return new AssetResponse(
@@ -246,7 +323,7 @@ public class AssetService : IAssetService
                     TypeName: c.AssetType?.Name ?? "Desconhecido",
                     Environment: c.Environment,
                     Enabled: c.IsEnabled
-                )).ToList() ?? new List<AssetChildResponse>(),
+                )).ToList() ?? [],
             RelatedAssets: asset.RelatedAssets?
                 .Where(r => r.DeletedAt == null)
                 .Select(r => new AssetRelatedResponse(
@@ -255,7 +332,7 @@ public class AssetService : IAssetService
                     TypeName: r.AssetType?.Name ?? "Desconhecido",
                     Environment: r.Environment,
                     Enabled: r.IsEnabled
-                )).ToList() ?? new List<AssetRelatedResponse>(),
+                )).ToList() ?? [],
             Vulns: asset.AssetVulns?
                 .Where(av => av.Vuln != null && av.Vuln.DeletedAt == null)
                 .Select(av => new VulnResponse(
@@ -267,10 +344,10 @@ public class AssetService : IAssetService
                     Environment: av.Vuln.Environment,
                     ParentVulnId: av.Vuln.ParentVulnId,
                     ParentVulnTitle: av.Vuln.ParentVuln?.Title ?? string.Empty,
-                    ChildVulns: new List<VulnChildResponse>(),
-                    RelatedVulns: new List<VulnRelatedResponse>(),
-                    Assets: new List<VulnAssetResponse>
-                    {
+                    ChildVulns: [],
+                    RelatedVulns: [],
+                    Assets:
+                    [
                         new VulnAssetResponse(
                             AssetId: asset.Id,
                             AssetName: asset.Name,
@@ -278,9 +355,9 @@ public class AssetService : IAssetService
                             Status: av.Status,
                             DiscoveredAt: av.DiscoveredAt
                         )
-                    },
+                    ],
                     CreatedAt: av.Vuln.CreatedAt
-                )).ToList() ?? new List<VulnResponse>()
+                )).ToList() ?? []
         );
     }
 }

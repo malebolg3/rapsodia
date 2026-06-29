@@ -15,5 +15,5 @@ public interface IReportService
     Task<Result<ReportResultDTO>> ExportJsonAsync(int id, CancellationToken ct);
     Task<Result<bool>> DeleteAsync(int id, CancellationToken ct);
     Task<Result<bool>> RestoreAsync(int id, CancellationToken ct);
-    Task<Result<DashboardDTO>> GetDashboardAsync(CancellationToken ct);
+    Task<Result<DashboardSummaryDTO>> GetDashboardAsync(CancellationToken ct);
 }

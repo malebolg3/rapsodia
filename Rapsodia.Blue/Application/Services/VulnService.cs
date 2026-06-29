@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Application.Interfaces;
+using Rapsodia.Blue.Domain.Common;
 using Rapsodia.Blue.Domain.Entities;
 
 namespace Rapsodia.Blue.Application.Services;
@@ -19,8 +20,8 @@ public class VulnService : IVulnService
 
     public VulnService(IVulnRepositoryPort vulnRepository, IAssetRepositoryPort assetRepository)
     {
-        _vulnRepository = vulnRepository;
-        _assetRepository = assetRepository;
+        _vulnRepository = vulnRepository ?? throw new ArgumentNullException(nameof(vulnRepository));
+        _assetRepository = assetRepository ?? throw new ArgumentNullException(nameof(assetRepository));
     }
 
     public async Task<ResponseModel<List<VulnResponse>>> ListAsync(CancellationToken ct = default)
@@ -226,6 +227,71 @@ public class VulnService : IVulnService
         }
     }
 
+    public async Task<Result<VulnStatsDTO>> GetStatsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var vulns = await _vulnRepository.ListAllAsync();
+            var active = vulns.Where(v => v.DeletedAt == null).ToList();
+
+            var topSignatures = active
+                .GroupBy(v => v.Title)
+                .OrderByDescending(g => g.Count())
+                .Take(10)
+                .Select(g => new AttackSignatureDTO
+                {
+                    Name = g.Key,
+                    Count = g.Count().ToString(),
+                    Percentage = active.Count > 0 ? (int)((double)g.Count() / active.Count * 100) : 0
+                })
+                .ToList();
+
+            return Result<VulnStatsDTO>.Ok(new VulnStatsDTO
+            {
+                TotalCount = active.Count,
+                TopSignatures = topSignatures
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<VulnStatsDTO>.Fail($"Erro ao buscar estatísticas de vulnerabilidades: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<VulnTrendDTO>> GetTrendAsync(TrendFilterDTO filter, CancellationToken ct = default)
+    {
+        try
+        {
+            var vulns = await _vulnRepository.ListAllAsync();
+            var active = vulns.Where(v => v.DeletedAt == null).ToList();
+
+            var startDate = filter.StartDate ?? DateTime.UtcNow.AddDays(-30);
+            var endDate = filter.EndDate ?? DateTime.UtcNow;
+
+            var dataPoints = active
+                .Where(v => v.CreatedAt >= startDate && v.CreatedAt <= endDate)
+                .GroupBy(v => v.CreatedAt.Date)
+                .Select(g => new TrendDataPointDTO
+                {
+                    Date = g.Key,
+                    Count = g.Count(),
+                    Label = g.Key.ToString("dd/MM")
+                })
+                .OrderBy(d => d.Date)
+                .ToList();
+
+            return Result<VulnTrendDTO>.Ok(new VulnTrendDTO
+            {
+                DataPoints = dataPoints,
+                MetricType = filter.MetricType ?? "vulnerabilities"
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<VulnTrendDTO>.Fail($"Erro ao buscar tendências de vulnerabilidades: {ex.Message}");
+        }
+    }
+
     private static VulnResponse MapToResponse(Vuln vuln)
     {
         return new VulnResponse(
@@ -240,11 +306,11 @@ public class VulnService : IVulnService
             vuln.ChildVulns?
                 .Where(c => c.DeletedAt == null)
                 .Select(c => new VulnChildResponse(c.Id, c.Code, c.Title, c.Level, c.Environment))
-                .ToList() ?? new List<VulnChildResponse>(),
+                .ToList() ?? [],
             vuln.RelatedVulns?
                 .Where(r => r.DeletedAt == null)
                 .Select(r => new VulnRelatedResponse(r.Id, r.Code, r.Title, r.Level, r.Environment, "Related"))
-                .ToList() ?? new List<VulnRelatedResponse>(),
+                .ToList() ?? [],
             vuln.AssetVulns?
                 .Where(av => av.Asset?.DeletedAt == null)
                 .Select(av => new VulnAssetResponse(
@@ -253,7 +319,7 @@ public class VulnService : IVulnService
                     av.Asset?.AssetType?.Name ?? "Desconhecido",
                     av.Status,
                     av.DiscoveredAt))
-                .ToList() ?? new List<VulnAssetResponse>(),
+                .ToList() ?? [],
             vuln.CreatedAt
         );
     }

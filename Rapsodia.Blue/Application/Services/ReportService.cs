@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Th1eros
 
 using System.Net.Http.Json;
+using Microsoft.Extensions.Configuration;
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Application.Interfaces;
 using Rapsodia.Blue.Domain.Common;
@@ -12,143 +13,152 @@ public class ReportService : IReportService
 {
     private readonly IHttpClientFactory _http;
     private readonly IConfiguration _cfg;
-    private readonly bool _mock;
 
     public ReportService(IHttpClientFactory http, IConfiguration cfg)
     {
-        _http = http;
-        _cfg = cfg;
-        _mock = cfg["DOC_MOCK"] == "true" || string.IsNullOrEmpty(cfg["DOC_URL"]);
+        _http = http ?? throw new ArgumentNullException(nameof(http));
+        _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
     }
 
     public async Task<Result<ReportResultDTO>> GenerateAsync(CreateReportRequest req, CancellationToken ct)
     {
-        if (_mock)
-            return Result<ReportResultDTO>.Ok(MockReport(req));
+        ArgumentNullException.ThrowIfNull(req);
 
-        var client = _http.CreateClient();
-        client.BaseAddress = new Uri(_cfg["DOC_URL"]!);
-        client.DefaultRequestHeaders.Add("X-API-Key", _cfg["DOC_KEY"]);
-        var res = await client.PostAsJsonAsync("/api/report/generate", req, ct);
-        var data = await res.Content.ReadFromJsonAsync<ReportResultDTO>(cancellationToken: ct);
-        return Result<ReportResultDTO>.Ok(data!);
+        try
+        {
+            var client = CreateConfiguredClient();
+            var res = await client.PostAsJsonAsync("/api/report/generate", req, ct);
+            if (!res.IsSuccessStatusCode)
+                return Result<ReportResultDTO>.Fail($"Failed to generate report: {res.StatusCode}");
+
+            var data = await res.Content.ReadFromJsonAsync<ReportResultDTO>(cancellationToken: ct);
+            return data is null
+                ? Result<ReportResultDTO>.Fail("Failed to deserialize report data")
+                : Result<ReportResultDTO>.Ok(data);
+        }
+        catch (Exception ex)
+        {
+            return Result<ReportResultDTO>.Fail($"Report generation unexpected error: {ex.Message}");
+        }
     }
 
     public async Task<Result<ReportResultDTO>> GetByIdAsync(int id, CancellationToken ct)
     {
-        if (_mock)
-            return Result<ReportResultDTO>.Ok(MockReport(new CreateReportRequest()));
-
-        var client = _http.CreateClient();
-        client.BaseAddress = new Uri(_cfg["DOC_URL"]!);
-        client.DefaultRequestHeaders.Add("X-API-Key", _cfg["DOC_KEY"]);
-        var data = await client.GetFromJsonAsync<ReportResultDTO>($"/api/report/{id}", ct);
-        return data is null ? Result<ReportResultDTO>.Fail("Report not found") : Result<ReportResultDTO>.Ok(data);
+        try
+        {
+            var client = CreateConfiguredClient();
+            var data = await client.GetFromJsonAsync<ReportResultDTO>($"/api/report/{id}", ct);
+            return data is null
+                ? Result<ReportResultDTO>.Fail("Report not found")
+                : Result<ReportResultDTO>.Ok(data);
+        }
+        catch (Exception ex)
+        {
+            return Result<ReportResultDTO>.Fail($"Error retrieving report: {ex.Message}");
+        }
     }
 
     public async Task<Result<PagedResult<ReportResultDTO>>> ListAsync(ReportFilterDTO filter, CancellationToken ct)
     {
-        if (_mock)
-            return Result<PagedResult<ReportResultDTO>>.Ok(new PagedResult<ReportResultDTO>
-            {
-                Items = new List<ReportResultDTO> { MockReport(new CreateReportRequest()) },
-                TotalCount = 1,
-                Page = filter.Page,
-                PageSize = filter.PageSize
-            });
+        ArgumentNullException.ThrowIfNull(filter);
 
-        var client = _http.CreateClient();
-        client.BaseAddress = new Uri(_cfg["DOC_URL"]!);
-        client.DefaultRequestHeaders.Add("X-API-Key", _cfg["DOC_KEY"]);
-        var data = await client.GetFromJsonAsync<PagedResult<ReportResultDTO>>(
-            $"/api/report?page={filter.Page}&pageSize={filter.PageSize}", ct);
-        return Result<PagedResult<ReportResultDTO>>.Ok(data!);
+        try
+        {
+            var client = CreateConfiguredClient();
+            var page = filter.Page <= 0 ? 1 : filter.Page;
+            var pageSize = filter.PageSize <= 0 ? 10 : filter.PageSize;
+
+            var data = await client.GetFromJsonAsync<PagedResult<ReportResultDTO>>(
+                $"/api/report?page={page}&pageSize={pageSize}", ct);
+            return data is null
+                ? Result<PagedResult<ReportResultDTO>>.Fail("No reports found")
+                : Result<PagedResult<ReportResultDTO>>.Ok(data);
+        }
+        catch (Exception ex)
+        {
+            return Result<PagedResult<ReportResultDTO>>.Fail($"Error listing reports: {ex.Message}");
+        }
     }
 
     public async Task<Result<ReportFileDTO>> ExportPdfAsync(int id, CancellationToken ct)
     {
-        if (_mock)
+        try
         {
-            var pdf = "Mock PDF Content"u8.ToArray();
+            var client = CreateConfiguredClient();
+            var bytes = await client.GetByteArrayAsync($"/api/report/{id}/export/pdf", ct);
             return Result<ReportFileDTO>.Ok(new ReportFileDTO
             {
-                Content = pdf,
+                Content = bytes,
                 FileName = $"report_{id}.pdf",
                 ContentType = "application/pdf"
             });
         }
-
-        var client = _http.CreateClient();
-        client.BaseAddress = new Uri(_cfg["DOC_URL"]!);
-        client.DefaultRequestHeaders.Add("X-API-Key", _cfg["DOC_KEY"]);
-        var bytes = await client.GetByteArrayAsync($"/api/report/{id}/export/pdf", ct);
-        return Result<ReportFileDTO>.Ok(new ReportFileDTO
+        catch (Exception ex)
         {
-            Content = bytes,
-            FileName = $"report_{id}.pdf",
-            ContentType = "application/pdf"
-        });
+            return Result<ReportFileDTO>.Fail($"Error exporting PDF: {ex.Message}");
+        }
     }
 
     public async Task<Result<ReportResultDTO>> ExportJsonAsync(int id, CancellationToken ct)
     {
-        if (_mock)
-            return Result<ReportResultDTO>.Ok(MockReport(new CreateReportRequest { Format = "json" }));
-
-        var client = _http.CreateClient();
-        client.BaseAddress = new Uri(_cfg["DOC_URL"]!);
-        client.DefaultRequestHeaders.Add("X-API-Key", _cfg["DOC_KEY"]);
-        var data = await client.GetFromJsonAsync<ReportResultDTO>($"/api/report/{id}/export/json", ct);
-        return Result<ReportResultDTO>.Ok(data!);
+        try
+        {
+            var client = CreateConfiguredClient();
+            var data = await client.GetFromJsonAsync<ReportResultDTO>($"/api/report/{id}/export/json", ct);
+            return data is null
+                ? Result<ReportResultDTO>.Fail("Report not found")
+                : Result<ReportResultDTO>.Ok(data);
+        }
+        catch (Exception ex)
+        {
+            return Result<ReportResultDTO>.Fail($"Error exporting JSON: {ex.Message}");
+        }
     }
 
     public async Task<Result<bool>> DeleteAsync(int id, CancellationToken ct)
     {
-        if (_mock) return Result<bool>.Ok(true);
-
-        var client = _http.CreateClient();
-        client.BaseAddress = new Uri(_cfg["DOC_URL"]!);
-        client.DefaultRequestHeaders.Add("X-API-Key", _cfg["DOC_KEY"]);
-        await client.DeleteAsync($"/api/report/{id}", ct);
-        return Result<bool>.Ok(true);
+        try
+        {
+            var client = CreateConfiguredClient();
+            var res = await client.DeleteAsync($"/api/report/{id}", ct);
+            return res.IsSuccessStatusCode
+                ? Result<bool>.Ok(true)
+                : Result<bool>.Fail($"Failed to delete report: {res.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Fail($"Error deleting report: {ex.Message}");
+        }
     }
 
     public Task<Result<bool>> RestoreAsync(int id, CancellationToken ct)
-        => Task.FromResult(Result<bool>.Ok(true));
+        => Task.FromResult(Result<bool>.Fail("Restore not supported for reports"));
 
-    public async Task<Result<DashboardDTO>> GetDashboardAsync(CancellationToken ct)
+    public async Task<Result<DashboardSummaryDTO>> GetDashboardAsync(CancellationToken ct)
     {
-        if (_mock)
-            return Result<DashboardDTO>.Ok(MockDashboard());
-
-        var client = _http.CreateClient();
-        client.BaseAddress = new Uri(_cfg["DOC_URL"]!);
-        client.DefaultRequestHeaders.Add("X-API-Key", _cfg["DOC_KEY"]);
-        var data = await client.GetFromJsonAsync<DashboardDTO>("/api/dashboard", ct);
-        return Result<DashboardDTO>.Ok(data!);
+        try
+        {
+            var client = CreateConfiguredClient();
+            var data = await client.GetFromJsonAsync<DashboardSummaryDTO>("/api/dashboard", ct);
+            return data is null
+                ? Result<DashboardSummaryDTO>.Fail("Dashboard not found")
+                : Result<DashboardSummaryDTO>.Ok(data);
+        }
+        catch (Exception ex)
+        {
+            return Result<DashboardSummaryDTO>.Fail($"Error retrieving dashboard summary: {ex.Message}");
+        }
     }
 
-    private static ReportResultDTO MockReport(CreateReportRequest req) => new()
+    private HttpClient CreateConfiguredClient()
     {
-        Id = Random.Shared.Next(1, 1000),
-        ReportType = req.ReportType,
-        Status = "Generated",
-        Format = req.Format ?? "pdf",
-        GeneratedAt = DateTime.UtcNow,
-        Data = new Dictionary<string, object> { ["findings"] = 42, ["severity"] = "high" }
-    };
+        var client = _http.CreateClient("ReportClient");
+        var baseUrl = _cfg["DOC_URL"] ?? throw new InvalidOperationException("DOC_URL config key is missing.");
+        var apiKey = _cfg["DOC_KEY"] ?? throw new InvalidOperationException("DOC_KEY security token is missing.");
 
-    private static DashboardDTO MockDashboard() => new()
-    {
-        TotalAssets = 156,
-        TotalVulnerabilities = 423,
-        ActiveIncidents = 7,
-        CompletedScans = 89,
-        VulnsBySeverity = new Dictionary<string, int> { ["Critical"] = 12, ["High"] = 45, ["Medium"] = 134, ["Low"] = 232 },
-        RecentActivities = new List<RecentActivityDTO>
-        {
-            new() { ActivityType = "scan", Description = "Network scan completed", Timestamp = DateTime.UtcNow.AddHours(-1) },
-            new() { ActivityType = "vuln", Description = "Critical CVE detected", Timestamp = DateTime.UtcNow.AddHours(-3) }
-        }
-    };
+        client.BaseAddress = new Uri(baseUrl);
+        client.DefaultRequestHeaders.Remove("X-API-Key");
+        client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+        return client;
+    }
 }

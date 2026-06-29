@@ -38,20 +38,3 @@ public class ReportFileDTO
     public string FileName { get; set; } = string.Empty;
     public string ContentType { get; set; } = string.Empty;
 }
-
-public class DashboardDTO
-{
-    public int TotalAssets { get; set; }
-    public int TotalVulnerabilities { get; set; }
-    public int ActiveIncidents { get; set; }
-    public int CompletedScans { get; set; }
-    public Dictionary<string, int> VulnsBySeverity { get; set; } = new();
-    public List<RecentActivityDTO> RecentActivities { get; set; } = new();
-}
-
-public class RecentActivityDTO
-{
-    public string ActivityType { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public DateTime Timestamp { get; set; }
-}

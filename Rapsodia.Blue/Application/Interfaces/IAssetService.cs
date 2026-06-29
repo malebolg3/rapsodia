@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Rapsodia.Blue.Application.DTOs;
+using Rapsodia.Blue.Domain.Common;
 
 namespace Rapsodia.Blue.Application.Interfaces;
 
@@ -18,4 +19,6 @@ public interface IAssetService
     Task<ResponseModel<bool>> EnableAsync(int id, CancellationToken ct = default);
     Task<ResponseModel<AssetResponse>> AddRelatedAsync(int assetId, int relatedAssetId, CancellationToken ct = default);
     Task<ResponseModel<AssetResponse>> RemoveRelatedAsync(int assetId, int relatedAssetId, CancellationToken ct = default);
+    Task<Result<AssetStatsDTO>> GetStatsAsync(CancellationToken ct = default);
+    Task<Result<RiskMatrixDTO>> GetRiskMatrixAsync(CancellationToken ct = default);
 }

@@ -79,10 +79,23 @@ services:
       - ORACLE_HOME=/app/wallet
       - ENB_ORLN=true
       - ORLEANS_ENABLED=true
+      - AI_MODEL=${AI_MODEL}
+      - AI_URL=http://ollama-server:11434 
     ports:
       - "10004:10000"
     volumes:
       - /home/ubuntu/th1er/ops/wallet_rainbow:/app/wallet
+    networks:
+      - malebolge_net
+    restart: unless-stopped
+  
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    ports:
+      - "11434:11434"
+    volumes:
+      - /home/ubuntu/.ollama/models:/root/.ollama/models
     networks:
       - malebolge_net
     restart: unless-stopped

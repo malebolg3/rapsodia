@@ -15,73 +15,62 @@ public class ChatService : IChatService
     private readonly string _model;
     private readonly string _url;
 
-    public ChatService(HttpClient http)
+    public ChatService()
     {
-        _http = http ?? throw new ArgumentNullException(nameof(http));
-        var rawUrl = Environment.GetEnvironmentVariable("AI_URL") ?? "http://ollama-server:11434";
-        rawUrl = rawUrl.EndsWith('/') ? rawUrl : $"{rawUrl}/";
-        _url = rawUrl.Contains("/api/") ? rawUrl : $"{rawUrl}api/";
-        _model = Environment.GetEnvironmentVariable("AI_MODEL") ?? "tinyllama";
+        var rawUrl = Environment.GetEnvironmentVariable("AI_URL") ?? "http://172.18.0.1:11434";
+        _url = rawUrl.TrimEnd('/');
+        _model = Environment.GetEnvironmentVariable("AI_MODEL") ?? "phi3:latest";
+        _http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
     }
 
     public async Task<Result<ChatResponse>> SendMessageAsync(ChatRequest request)
     {
-        var payload = new
-        {
-            model = _model,
-            messages = new[]
-            {
-                new { role = "system", content = "Você é um analista de cibersegurança. Responda com análise de risco." },
-                new { role = "user", content = request.Message }
-            },
-            options = new { temperature = 0.2 },
-            stream = false
-        };
+        ArgumentNullException.ThrowIfNull(request);
 
-        var url = $"{_url}chat";
+        var payload = new { model = _model, prompt = request.Message, stream = false };
+        var endpoint = $"{_url}/api/generate";
+
+        Console.WriteLine($"[ChatService] Enviando para: {endpoint}");
+        Console.WriteLine($"[ChatService] Modelo: {_model}");
+        Console.WriteLine($"[ChatService] Prompt: {request.Message[..Math.Min(50, request.Message.Length)]}...");
 
         try
         {
-            using var response = await _http.PostAsJsonAsync(url, payload);
-
+            using var response = await _http.PostAsJsonAsync(endpoint, payload);
             if (!response.IsSuccessStatusCode)
             {
-                return Result<ChatResponse>.Fail($"Falha no LLM: {response.StatusCode}");
+                var error = await response.Content.ReadAsStringAsync();
+                return Result<ChatResponse>.Fail($"LLM failure: {response.StatusCode} - {error}");
             }
 
             var json = await response.Content.ReadAsStringAsync();
             if (string.IsNullOrEmpty(json))
-            {
-                return Result<ChatResponse>.Fail("Resposta da API vazia.");
-            }
+                return Result<ChatResponse>.Fail("Empty API response content.");
+
+            Console.WriteLine($"[ChatService] Resposta crua: {json[..Math.Min(200, json.Length)]}...");
 
             using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("response", out var text))
+                return Result<ChatResponse>.Fail("Invalid json structure template missing response property.");
 
-            if (doc.RootElement.TryGetProperty("message", out var msg) &&
-                msg.TryGetProperty("content", out var text))
-            {
-                var content = text.GetString() ?? "Sem resposta.";
-
-                return Result<ChatResponse>.Ok(new ChatResponse(
-                    Content: content,
-                    ContextEntropy: 0.5,
-                    Risk: new RiskAssessment(
-                        ShannonEntropy: 0.5,
-                        RiskScore: 0.3,
-                        SeverityLevel: "Low",
-                        RiskNarrative: new List<string> { "Análise automática" },
-                        VulnerabilityChains: new List<ChainedVulnerability>()
-                    ),
-                    RecommendedTools: new List<string>(),
-                    Timestamp: DateTime.UtcNow
-                ));
-            }
-
-            return Result<ChatResponse>.Fail("Estrutura de resposta inválida.");
+            return Result<ChatResponse>.Ok(new ChatResponse(
+                Content: text.GetString() ?? "Sem resposta.",
+                ContextEntropy: 0.5,
+                Risk: new RiskAssessment(
+                    ShannonEntropy: 0.5,
+                    RiskScore: 0.3,
+                    SeverityLevel: "Low",
+                    RiskNarrative: ["Análise automática"],
+                    VulnerabilityChains: []
+                ),
+                RecommendedTools: [],
+                Timestamp: DateTime.UtcNow
+            ));
         }
         catch (Exception ex)
         {
-            return Result<ChatResponse>.Fail($"Erro na comunicação com o LLM: {ex.Message}");
+            Console.WriteLine($"[ChatService] ERRO: {ex.Message}");
+            return Result<ChatResponse>.Fail($"LLM communication transit error: {ex.Message}");
         }
     }
 
@@ -89,11 +78,16 @@ public class ChatService : IChatService
         => Task.FromResult(Result<ConversationSummary>.Fail("Não implementado."));
 
     public Task<PagedResult<ConversationSummary>> ListConversationsAsync(Guid userId, int page = 1, int pageSize = 20)
-        => Task.FromResult(new PagedResult<ConversationSummary>
+    {
+        var activePage = page <= 0 ? 1 : page;
+        var activePageSize = pageSize <= 0 ? 20 : pageSize;
+
+        return Task.FromResult(new PagedResult<ConversationSummary>
         {
-            Items = new List<ConversationSummary>(),
+            Items = [],
             TotalCount = 0,
-            Page = page,
-            PageSize = pageSize
+            Page = activePage,
+            PageSize = activePageSize
         });
+    }
 }

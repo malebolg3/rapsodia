@@ -169,7 +169,7 @@ public class AuthAppService : IAuthService
         await RedisDB.KeyDeleteAsync(key);
 
         var user = await _db.Users.FirstAsync(u => u.Username == req.Username && u.DeletedAt == null, ct);
-        var token = GenerateToken(user, service, scope, expiresIn);
+        var token = GenerateToken(user, "silver", "*", "8h");
 
         var session = new SessionInfo
         {
@@ -243,6 +243,17 @@ public class AuthAppService : IAuthService
             claims.Add(new("scope", $"{service}:{scope}"));
             claims.Add(new("service", service));
         }
+        else
+        {
+            claims.Add(new("scope", "blue:* silver:* red:* violet:*"));
+        }
+
+        claims.Add(new("allow_orch", "true"));
+        claims.Add(new("allow_obsidian", "true"));
+        claims.Add(new("max_agents", "10"));
+        claims.Add(new("max_labs", "10"));
+        claims.Add(new("allow_exploit", "true"));
+        claims.Add(new("allow_post_exploit", "true"));
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {

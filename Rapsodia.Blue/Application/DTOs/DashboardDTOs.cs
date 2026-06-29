@@ -25,12 +25,20 @@ public class AssetStatsDTO
     public int Total { get; set; }
     public int Active { get; set; }
     public int Inactive { get; set; }
-    public Dictionary<string, int> ByType { get; set; } = new();
+    public int TotalCount { get; set; }
+    public Dictionary<string, int> ByType { get; set; } = [];
+    public List<AssetExposureDTO> TopRisky { get; set; } = [];
+}
+
+public class VulnStatsDTO
+{
+    public int TotalCount { get; set; }
+    public List<AttackSignatureDTO> TopSignatures { get; set; } = [];
 }
 
 public class VulnTrendDTO
 {
-    public List<TrendDataPointDTO> DataPoints { get; set; } = new();
+    public List<TrendDataPointDTO> DataPoints { get; set; } = [];
     public string MetricType { get; set; } = string.Empty;
 }
 
@@ -43,22 +51,22 @@ public class TrendDataPointDTO
 
 public class RiskMatrixDTO
 {
-    public Dictionary<string, int> ImpactVs { get; set; } = new();
-    public List<RiskItemDTO> TopRisks { get; set; } = new();
+    public Dictionary<string, int> ImpactVs { get; set; } = [];
+    public List<RiskItemDTO> TopRisks { get; set; } = [];
 }
 
 public class RiskItemDTO
 {
     public int AssetId { get; set; }
     public string AssetName { get; set; } = string.Empty;
-    public int Score { get; set; }
+    public double Score { get; set; }
     public string Level { get; set; } = string.Empty;
 }
 
 public class ComplianceStatusDTO
 {
     public double OverallScore { get; set; }
-    public List<ComplianceItemDTO> Items { get; set; } = new();
+    public List<ComplianceItemDTO> Items { get; set; } = [];
 }
 
 public class ComplianceItemDTO

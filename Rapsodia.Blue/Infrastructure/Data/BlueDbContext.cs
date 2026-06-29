@@ -22,6 +22,8 @@ public class BlueDbContext : DbContext
     public DbSet<OlimpoTotpAccount> OlimpoTotpAccounts => Set<OlimpoTotpAccount>();
     public DbSet<OlimpoDocument> OlimpoDocuments => Set<OlimpoDocument>();
     public DbSet<SyncQueue> SyncQueues => Set<SyncQueue>();
+    public DbSet<Incident> Incidents => Set<Incident>();
+    public DbSet<IncidentComment> IncidentComments => Set<IncidentComment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,6 +34,8 @@ public class BlueDbContext : DbContext
         modelBuilder.Entity<User>(u => u.Property(x => x.Id).ValueGeneratedOnAdd());
         modelBuilder.Entity<SyncQueue>(s => s.Property(x => x.Id).ValueGeneratedOnAdd());
         modelBuilder.Entity<AssetType>(t => t.Property(x => x.Id).ValueGeneratedOnAdd());
+        modelBuilder.Entity<Incident>(i => { i.HasQueryFilter(x => x.DeletedAt == null); i.HasMany(x => x.Comments).WithOne(c => c.Incident).HasForeignKey(c => c.IncidentId).OnDelete(DeleteBehavior.Cascade); i.HasOne(x => x.Asset).WithMany().HasForeignKey(x => x.AssetId).OnDelete(DeleteBehavior.SetNull); i.Property(x => x.Id).ValueGeneratedOnAdd(); });
+        modelBuilder.Entity<IncidentComment>(c => { c.HasQueryFilter(x => x.DeletedAt == null); c.Property(x => x.Id).ValueGeneratedOnAdd(); });
 
         modelBuilder.Entity<Asset>(a =>
         {

@@ -5,201 +5,319 @@ using System.Security.Claims;
 using Rapsodia.Blue.Application.DTOs;
 using Rapsodia.Blue.Application.Interfaces;
 using Rapsodia.Blue.Domain.Common;
+using Rapsodia.Blue.Domain.Entities;
 
 namespace Rapsodia.Blue.Application.Services;
 
 public class IncidentService : IIncidentService
 {
-    private readonly List<IncidentResultDTO> _incidents = new();
-    private readonly IConfiguration _cfg;
-    private readonly bool _mock;
-    private int _nextId = 1;
+    private readonly IIncidentRepository _repository;
 
-    public IncidentService(IConfiguration cfg)
+    public IncidentService(IIncidentRepository repository)
     {
-        _cfg = cfg;
-        _mock = cfg["INC_MOCK"] == "true" || string.IsNullOrEmpty(cfg["DB_HOST"]);
-        
-        if (_mock)
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    }
+
+    public async Task<Result<IncidentResultDTO>> CreateAsync(ClaimsPrincipal user, CreateIncidentRequest req, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+
+        try
         {
-            _incidents.Add(new IncidentResultDTO
-            {
-                Id = _nextId++,
-                Title = "Ransomware Attack Detected",
-                Description = "Encryption activity detected on file server",
-                Severity = "Critical",
-                Status = "Open",
-                AssetId = 10,
-                AssignedToId = 1,
-                AssignedToName = "Admin User",
-                Comments = new List<IncidentCommentDTO>
-                {
-                    new() { Id = 1, Content = "Investigating the source", AuthorName = "Admin User", CreatedAt = DateTime.UtcNow.AddHours(-4) },
-                    new() { Id = 2, Content = "Containment in progress", AuthorName = "Analyst", CreatedAt = DateTime.UtcNow.AddHours(-2) }
-                },
-                CreatedAt = DateTime.UtcNow.AddHours(-6)
-            });
-            _incidents.Add(new IncidentResultDTO
-            {
-                Id = _nextId++,
-                Title = "Unauthorized Access Attempt",
-                Description = "Multiple failed login attempts from external IP",
-                Severity = "High",
-                Status = "InProgress",
-                AssetId = 5,
-                AssignedToId = 2,
-                AssignedToName = "Security Analyst",
-                Comments = new List<IncidentCommentDTO>
-                {
-                    new() { Id = 3, Content = "IP blocked at firewall", AuthorName = "Security Analyst", CreatedAt = DateTime.UtcNow.AddHours(-1) }
-                },
-                CreatedAt = DateTime.UtcNow.AddHours(-3)
-            });
-            _incidents.Add(new IncidentResultDTO
-            {
-                Id = _nextId++,
-                Title = "Data Exfiltration Alert",
-                Description = "Large outbound data transfer detected",
-                Severity = "Medium",
-                Status = "Resolved",
-                AssetId = 15,
-                AssignedToId = 1,
-                AssignedToName = "Admin User",
-                Comments = new List<IncidentCommentDTO>(),
-                CreatedAt = DateTime.UtcNow.AddDays(-2),
-                ResolvedAt = DateTime.UtcNow.AddDays(-1)
-            });
+            var entity = new Incident();
+            entity.Update(
+                title: req.Title,
+                description: req.Description,
+                severity: req.Severity,
+                status: "Open",
+                assetId: req.AssetId
+            );
+
+            var userName = GetUserName(user);
+            if (!string.IsNullOrEmpty(userName))
+                entity.Assign(null, userName);
+
+            await _repository.SaveAsync(entity, ct);
+            return Result<IncidentResultDTO>.Ok(MapToResult(entity));
+        }
+        catch (Exception ex)
+        {
+            return Result<IncidentResultDTO>.Fail($"Error creating incident: {ex.Message}");
         }
     }
 
-    public Task<Result<IncidentResultDTO>> CreateAsync(ClaimsPrincipal user, CreateIncidentRequest req, CancellationToken ct)
+    public async Task<Result<IncidentResultDTO>> GetByIdAsync(int id, CancellationToken ct)
     {
-        var userId = GetUserId(user);
-        var userName = GetUserName(user);
-        
-        var incident = new IncidentResultDTO
+        try
         {
-            Id = _nextId++,
-            Title = req.Title,
-            Description = req.Description,
-            Severity = req.Severity,
-            Status = "Open",
-            AssetId = req.AssetId,
-            AssignedToId = userId,
-            AssignedToName = userName,
-            Comments = new List<IncidentCommentDTO>(),
-            CreatedAt = DateTime.UtcNow
-        };
-        
-        _incidents.Add(incident);
-        return Task.FromResult(Result<IncidentResultDTO>.Ok(incident));
-    }
-
-    public Task<Result<IncidentResultDTO>> GetByIdAsync(int id, CancellationToken ct)
-    {
-        var incident = _incidents.FirstOrDefault(i => i.Id == id);
-        return Task.FromResult(incident is null 
-            ? Result<IncidentResultDTO>.Fail("Incident not found") 
-            : Result<IncidentResultDTO>.Ok(incident));
-    }
-
-    public Task<Result<PagedResult<IncidentResultDTO>>> ListAsync(IncidentFilterDTO filter, CancellationToken ct)
-    {
-        var items = _incidents
-            .Where(i => string.IsNullOrEmpty(filter.Severity) || i.Severity == filter.Severity)
-            .Where(i => string.IsNullOrEmpty(filter.Status) || i.Status == filter.Status)
-            .Where(i => !filter.AssetId.HasValue || i.AssetId == filter.AssetId.Value)
-            .ToList();
-
-        return Task.FromResult(Result<PagedResult<IncidentResultDTO>>.Ok(new PagedResult<IncidentResultDTO>
+            var entity = await _repository.GetByIdAsync(id, ct);
+            return entity is null
+                ? Result<IncidentResultDTO>.Fail("Incident not found")
+                : Result<IncidentResultDTO>.Ok(MapToResult(entity));
+        }
+        catch (Exception ex)
         {
-            Items = items.Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize).ToList(),
-            TotalCount = items.Count,
-            Page = filter.Page,
-            PageSize = filter.PageSize
-        }));
+            return Result<IncidentResultDTO>.Fail($"Error retrieving incident: {ex.Message}");
+        }
     }
 
-    public Task<Result<IncidentResultDTO>> UpdateAsync(int id, EditIncidentRequest req, CancellationToken ct)
+    public async Task<Result<PagedResult<IncidentResultDTO>>> ListAsync(IncidentFilterDTO filter, CancellationToken ct)
     {
-        var incident = _incidents.FirstOrDefault(i => i.Id == id);
-        if (incident is null)
-            return Task.FromResult(Result<IncidentResultDTO>.Fail("Incident not found"));
+        ArgumentNullException.ThrowIfNull(filter);
 
-        if (req.Title != null) incident.Title = req.Title;
-        if (req.Description != null) incident.Description = req.Description;
-        if (req.Severity != null) incident.Severity = req.Severity;
-
-        return Task.FromResult(Result<IncidentResultDTO>.Ok(incident));
-    }
-
-    public Task<Result<IncidentResultDTO>> AssignAsync(int id, AssignIncidentRequest req, CancellationToken ct)
-    {
-        var incident = _incidents.FirstOrDefault(i => i.Id == id);
-        if (incident is null)
-            return Task.FromResult(Result<IncidentResultDTO>.Fail("Incident not found"));
-
-        incident.AssignedToId = req.UserId;
-        incident.AssignedToName = $"User_{req.UserId}";
-        return Task.FromResult(Result<IncidentResultDTO>.Ok(incident));
-    }
-
-    public Task<Result<IncidentResultDTO>> ChangeStatusAsync(int id, ChangeStatusRequest req, CancellationToken ct)
-    {
-        var incident = _incidents.FirstOrDefault(i => i.Id == id);
-        if (incident is null)
-            return Task.FromResult(Result<IncidentResultDTO>.Fail("Incident not found"));
-
-        incident.Status = req.Status;
-        if (req.Status == "Resolved")
-            incident.ResolvedAt = DateTime.UtcNow;
-
-        return Task.FromResult(Result<IncidentResultDTO>.Ok(incident));
-    }
-
-    public Task<Result<IncidentCommentDTO>> AddCommentAsync(int id, ClaimsPrincipal user, AddCommentRequest req, CancellationToken ct)
-    {
-        var incident = _incidents.FirstOrDefault(i => i.Id == id);
-        if (incident is null)
-            return Task.FromResult(Result<IncidentCommentDTO>.Fail("Incident not found"));
-
-        var comment = new IncidentCommentDTO
+        try
         {
-            Id = incident.Comments.Count + 1,
-            Content = req.Content,
-            AuthorName = GetUserName(user),
-            CreatedAt = DateTime.UtcNow
-        };
-        incident.Comments.Add(comment);
-        return Task.FromResult(Result<IncidentCommentDTO>.Ok(comment));
-    }
+            var entities = await _repository.ListAllAsync(ct);
 
-    public Task<Result<bool>> CloseAsync(int id, ClaimsPrincipal user, CancellationToken ct)
-    {
-        var incident = _incidents.FirstOrDefault(i => i.Id == id);
-        if (incident is null)
-            return Task.FromResult(Result<bool>.Fail("Incident not found"));
+            var items = entities
+                .Where(i => string.IsNullOrEmpty(filter.Severity) || i.Severity == filter.Severity)
+                .Where(i => string.IsNullOrEmpty(filter.Status) || i.Status == filter.Status)
+                .Where(i => !filter.AssetId.HasValue || i.AssetId == filter.AssetId.Value)
+                .ToList();
 
-        incident.Status = "Closed";
-        incident.ResolvedAt = DateTime.UtcNow;
-        return Task.FromResult(Result<bool>.Ok(true));
-    }
+            var page = filter.Page <= 0 ? 1 : filter.Page;
+            var pageSize = filter.PageSize <= 0 ? 10 : filter.PageSize;
 
-    public Task<Result<IncidentStatsDTO>> GetStatsAsync(CancellationToken ct)
-    {
-        return Task.FromResult(Result<IncidentStatsDTO>.Ok(new IncidentStatsDTO
+            return Result<PagedResult<IncidentResultDTO>>.Ok(new PagedResult<IncidentResultDTO>
+            {
+                Items = items.Skip((page - 1) * pageSize).Take(pageSize).Select(MapToResult).ToList(),
+                TotalCount = items.Count,
+                Page = page,
+                PageSize = pageSize
+            });
+        }
+        catch (Exception ex)
         {
-            TotalIncidents = _incidents.Count,
-            OpenIncidents = _incidents.Count(i => i.Status == "Open"),
-            InProgressIncidents = _incidents.Count(i => i.Status == "InProgress"),
-            ResolvedIncidents = _incidents.Count(i => i.Status == "Resolved" || i.Status == "Closed"),
-            BySeverity = _incidents.GroupBy(i => i.Severity).ToDictionary(g => g.Key, g => g.Count())
-        }));
+            return Result<PagedResult<IncidentResultDTO>>.Fail($"Error listing incidents: {ex.Message}");
+        }
     }
 
-    private static int GetUserId(ClaimsPrincipal user)
-        => int.Parse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+    public async Task<Result<IncidentResultDTO>> UpdateAsync(int id, EditIncidentRequest req, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(req);
 
-    private static string GetUserName(ClaimsPrincipal user)
-        => user.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
+        try
+        {
+            var entity = await _repository.GetByIdAsync(id, ct);
+            if (entity is null)
+                return Result<IncidentResultDTO>.Fail("Incident not found");
+
+            entity.Update(
+                title: req.Title,
+                description: req.Description,
+                severity: req.Severity
+            );
+
+            await _repository.UpdateAsync(entity, ct);
+            return Result<IncidentResultDTO>.Ok(MapToResult(entity));
+        }
+        catch (Exception ex)
+        {
+            return Result<IncidentResultDTO>.Fail($"Error updating incident: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<IncidentResultDTO>> AssignAsync(int id, AssignIncidentRequest req, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+
+        try
+        {
+            var entity = await _repository.GetByIdAsync(id, ct);
+            if (entity is null)
+                return Result<IncidentResultDTO>.Fail("Incident not found");
+
+            entity.Assign(req.UserId, $"User_{req.UserId}");
+
+            await _repository.UpdateAsync(entity, ct);
+            return Result<IncidentResultDTO>.Ok(MapToResult(entity));
+        }
+        catch (Exception ex)
+        {
+            return Result<IncidentResultDTO>.Fail($"Error assigning incident: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<IncidentResultDTO>> ChangeStatusAsync(int id, ChangeStatusRequest req, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+
+        try
+        {
+            var entity = await _repository.GetByIdAsync(id, ct);
+            if (entity is null)
+                return Result<IncidentResultDTO>.Fail("Incident not found");
+
+            entity.Update(status: req.Status);
+
+            await _repository.UpdateAsync(entity, ct);
+            return Result<IncidentResultDTO>.Ok(MapToResult(entity));
+        }
+        catch (Exception ex)
+        {
+            return Result<IncidentResultDTO>.Fail($"Error changing incident status: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<IncidentCommentDTO>> AddCommentAsync(int id, ClaimsPrincipal user, AddCommentRequest req, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+
+        try
+        {
+            var entity = await _repository.GetByIdAsync(id, ct);
+            if (entity is null)
+                return Result<IncidentCommentDTO>.Fail("Incident not found");
+
+            var comment = IncidentComment.Create(entity.Id, req.Content, GetUserName(user));
+            entity.Comments.Add(comment);
+
+            await _repository.UpdateAsync(entity, ct);
+            return Result<IncidentCommentDTO>.Ok(new IncidentCommentDTO
+            {
+                Id = comment.Id,
+                Content = comment.Content,
+                AuthorName = comment.AuthorName,
+                CreatedAt = comment.CreatedAt
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<IncidentCommentDTO>.Fail($"Error adding comment: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<bool>> CloseAsync(int id, ClaimsPrincipal user, CancellationToken ct)
+    {
+        try
+        {
+            var entity = await _repository.GetByIdAsync(id, ct);
+            if (entity is null)
+                return Result<bool>.Fail("Incident not found");
+
+            entity.Update(status: "Closed");
+
+            await _repository.UpdateAsync(entity, ct);
+            return Result<bool>.Ok(true);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Fail($"Error closing incident: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<IncidentStatsDTO>> GetStatsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var entities = await _repository.ListAllAsync(ct);
+
+            var active = entities.Where(i => i.Status is "Open" or "InProgress").ToList();
+            var resolved = entities.Where(i => i.Status is "Resolved" or "Closed").ToList();
+
+            var totalMttr = resolved
+                .Where(i => i.ResolvedAt.HasValue && i.CreatedAt != default)
+                .Select(i => (i.ResolvedAt!.Value - i.CreatedAt).TotalMinutes)
+                .DefaultIfEmpty(0)
+                .Average();
+
+            return Result<IncidentStatsDTO>.Ok(new IncidentStatsDTO
+            {
+                ActiveCount = active.Count,
+                AverageMttr = (int)totalMttr,
+                RecentLogs = entities
+                    .OrderByDescending(i => i.CreatedAt)
+                    .Take(5)
+                    .Select(i => new IncidentLogDTO
+                    {
+                        Id = $"INC-{i.Id:D4}",
+                        Title = i.Title,
+                        Phase = i.Status switch
+                        {
+                            "Open" => "CONTAINING",
+                            "InProgress" => "INVESTIGATING",
+                            "Resolved" => "MITIGATED",
+                            "Closed" => "MITIGATED",
+                            _ => "INVESTIGATING"
+                        },
+                        Time = i.CreatedAt.ToString("HH:mm") + " UTC"
+                    })
+                    .ToList()
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<IncidentStatsDTO>.Fail($"Error retrieving incident stats: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<PagedResult<RecentActivityDTO>>> GetRecentActivityAsync(ActivityFilterDTO filter, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+
+        try
+        {
+            var entities = await _repository.ListAllAsync(ct);
+
+            var activities = entities
+                .Select(i => new RecentActivityDTO
+                {
+                    ActivityType = "incident",
+                    Description = $"{i.Severity} incident: {i.Title}",
+                    Timestamp = i.CreatedAt
+                })
+                .Union(entities
+                    .SelectMany(i => i.Comments)
+                    .Select(c => new RecentActivityDTO
+                    {
+                        ActivityType = "comment",
+                        Description = $"Comment: {c.Content[..Math.Min(c.Content.Length, 50)]}",
+                        Timestamp = c.CreatedAt
+                    }))
+                .Where(a => string.IsNullOrEmpty(filter.ActivityType) || a.ActivityType == filter.ActivityType)
+                .Where(a => !filter.FromDate.HasValue || a.Timestamp >= filter.FromDate.Value)
+                .Where(a => !filter.ToDate.HasValue || a.Timestamp <= filter.ToDate.Value)
+                .OrderByDescending(a => a.Timestamp)
+                .ToList();
+
+            var page = filter.Page <= 0 ? 1 : filter.Page;
+            var pageSize = filter.PageSize <= 0 ? 10 : filter.PageSize;
+
+            return Result<PagedResult<RecentActivityDTO>>.Ok(new PagedResult<RecentActivityDTO>
+            {
+                Items = activities.Skip((page - 1) * pageSize).Take(pageSize).ToList(),
+                TotalCount = activities.Count,
+                Page = page,
+                PageSize = pageSize
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<PagedResult<RecentActivityDTO>>.Fail($"Error retrieving recent activities: {ex.Message}");
+        }
+    }
+
+    private static IncidentResultDTO MapToResult(Incident entity) => new()
+    {
+        Id = entity.Id,
+        Title = entity.Title,
+        Description = entity.Description,
+        Severity = entity.Severity,
+        Status = entity.Status,
+        AssetId = entity.AssetId,
+        AssignedToId = entity.AssignedToId,
+        AssignedToName = entity.AssignedToName,
+        Comments = entity.Comments.Select(c => new IncidentCommentDTO
+        {
+            Id = c.Id,
+            Content = c.Content,
+            AuthorName = c.AuthorName,
+            CreatedAt = c.CreatedAt
+        }).ToList(),
+        CreatedAt = entity.CreatedAt,
+        ResolvedAt = entity.ResolvedAt
+    };
+
+    private static string GetUserName(ClaimsPrincipal? user)
+        => user?.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
 }

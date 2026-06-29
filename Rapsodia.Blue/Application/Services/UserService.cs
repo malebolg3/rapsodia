@@ -140,14 +140,14 @@ public class UserService : IUserService
     }
 
     private static UserResultDTO Map(User user) => new UserResultDTO
-    {
-        Id = user.Id,
-        Username = user.Username,
-        Email = user.Email,
-        FullName = user.FullName,
-        IsActive = user.DeletedAt == null,
-        Roles = new List<string> { user.Role },
-        AllowedModules = user.AllowedModules,
-        CreatedAt = user.CreatedAt
-    };
+{
+    Id = user.Id,
+    Username = user.Username,
+    Email = user.Email ?? string.Empty,
+    FullName = user.FullName ?? string.Empty,
+    IsActive = user.DeletedAt == null,
+    Roles = new List<string> { user.Role },
+    AllowedModules = user.AllowedModules ?? string.Empty,
+    CreatedAt = user.CreatedAt
+};
 }

@@ -14,6 +14,7 @@ using Rapsodia.Silver.Application.Services;
 using Rapsodia.Silver.Domain.Interfaces;
 using Rapsodia.Silver.Domain.Models;
 using Rapsodia.Silver.Infrastructure.Data;
+using Rapsodia.Silver.Infrastructure.Services;
 using Rapsodia.Silver.Spart.Interfaces;
 
 namespace Rapsodia.Silver.Spart.Grains;
@@ -26,6 +27,7 @@ public class SilverAgent : HybridAgent, ISilverAgent
     private IServiceProvider _serviceProvider = null!;
     private IHttpClientFactory _httpClientFactory = null!;
     private readonly List<AgentInfo> _managedAgents = new();
+    private IGrainTimer? _autonomousTimer;
 
     public SilverAgent() { }
 
@@ -51,7 +53,7 @@ public class SilverAgent : HybridAgent, ISilverAgent
             agentName: "SilverAgent",
             agentColor: "silver",
             context: "Você é um curador de conhecimento em cibersegurança. Analise notícias, papers e CVEs. Extraia técnicas, ferramentas e vulnerabilidades. Organize o conhecimento para consulta futura.",
-            startAutonomous: true
+            startAutonomous: false
         );
         return Task.CompletedTask;
     }
@@ -139,7 +141,7 @@ public class SilverAgent : HybridAgent, ISilverAgent
     {
         if (_chat == null)
         {
-            _logger.LogWarning("SilverAgent não inicializado. Tentando inicialização tardia via ServiceProvider.");
+            _logger.LogWarning("SilverAgent não inicializado. Tentando inicialização tardia.");
             await EnsureInitializedAsync();
         }
 
@@ -294,31 +296,79 @@ public class SilverAgent : HybridAgent, ISilverAgent
     {
         if (_chat != null) return;
 
-        var sp = this.ServiceProvider;
-        if (sp == null)
+        try
         {
-            _logger.LogError("ServiceProvider do grão é nulo. Impossível inicializar SilverAgent.");
-            return;
+            _chat = new ChatService();
+
+            var sp = this.ServiceProvider;
+            if (sp != null)
+            {
+                _serviceProvider = sp;
+                _cfg = sp.GetRequiredService<IConfiguration>();
+                _publisher = sp.GetRequiredService<EventPublisher>();
+                _telemetry = sp.GetRequiredService<TelemetryService>();
+                _httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+
+                var memory = sp.GetRequiredService<IMemoryService>();
+                var obsidian = sp.GetRequiredService<IObsidianService>();
+                var logger = sp.GetRequiredService<ILogger<SilverAgent>>();
+
+                Initialize(
+                    _chat, memory, obsidian, logger,
+                    agentName: "SilverAgent",
+                    agentColor: "silver",
+                    context: "Você é um analista de cibersegurança.",
+                    startAutonomous: false
+                );
+            }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SilverAgent] Erro EnsureInit: {ex.Message}");
+        }
+    }
 
-        _serviceProvider = sp;
-        _cfg = sp.GetRequiredService<IConfiguration>();
-        _publisher = sp.GetRequiredService<EventPublisher>();
-        _telemetry = sp.GetRequiredService<TelemetryService>();
-        _httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-
-        var chat = sp.GetRequiredService<IChatService>();
-        var memory = sp.GetRequiredService<IMemoryService>();
-        var obsidian = sp.GetRequiredService<IObsidianService>();
-        var logger = sp.GetRequiredService<ILogger<SilverAgent>>();
-
-        await InitializeAsync(chat, memory, obsidian, _cfg, logger, _publisher, _telemetry, sp, _httpClientFactory);
+    private void StartAutonomous()
+    {
+        _isAutonomous = true;
+        _logger.LogInformation("SilverAgent: Modo autônomo iniciado com delay de estabilização");
     }
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync();
         await base.OnActivateAsync(cancellationToken);
+
+        _autonomousTimer = this.RegisterGrainTimer(
+            (state) =>
+            {
+                if (!_isAutonomous)
+                {
+                    StartAutonomous();
+                }
+
+                if (_autonomousTimer != null)
+                {
+                    _autonomousTimer.Dispose();
+                    _autonomousTimer = null;
+                }
+
+                return Task.CompletedTask;
+            },
+            new GrainTimerCreationOptions
+            {
+                DueTime = TimeSpan.FromSeconds(30),
+                Period = TimeSpan.FromMilliseconds(-1),
+                Interleave = true
+            }
+        );
+    }
+
+    public override async Task OnDeactivateAsync(DeactivationReason reason, CancellationToken cancellationToken)
+    {
+        _autonomousTimer?.Dispose();
+        _autonomousTimer = null;
+        await base.OnDeactivateAsync(reason, cancellationToken);
     }
 }
 
