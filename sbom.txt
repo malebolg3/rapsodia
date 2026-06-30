@@ -1,0 +1,128 @@
+Project 'Rapsodia' has the following package references
+   [net8.0]: 
+   Top-level Package                                            Requested   Resolved
+   > DotNetEnv                                                  3.2.0       3.2.0   
+   > Microsoft.AspNetCore.OpenApi                               8.0.11      8.0.11  
+   > Microsoft.EntityFrameworkCore.Relational                   8.0.11      8.0.11  
+   > Microsoft.Extensions.Configuration.Abstractions            8.0.0       8.0.0   
+   > Microsoft.Extensions.DependencyInjection.Abstractions      8.0.2       8.0.2   
+   > Microsoft.Extensions.Logging.Abstractions                  8.0.2       8.0.2   
+   > OpenTelemetry.Extensions.Hosting                           1.15.3      1.15.3  
+   > Oracle.EntityFrameworkCore                                 8.21.150    8.21.150
+   > Swashbuckle.AspNetCore                                     6.6.2       6.6.2   
+
+   Transitive Package                                             Resolved     
+   > Humanizer.Core                                               2.14.1       
+   > Microsoft.AspNetCore.Authentication.JwtBearer                8.0.11       
+   > Microsoft.AspNetCore.Connections.Abstractions                8.0.0        
+   > Microsoft.Bcl.AsyncInterfaces                                6.0.0        
+   > Microsoft.CodeAnalysis.Analyzers                             3.3.3        
+   > Microsoft.CodeAnalysis.Common                                4.5.0        
+   > Microsoft.CodeAnalysis.Workspaces.Common                     4.5.0        
+   > Microsoft.Data.Sqlite.Core                                   8.0.11       
+   > Microsoft.EntityFrameworkCore                                8.0.11       
+   > Microsoft.EntityFrameworkCore.Abstractions                   8.0.11       
+   > Microsoft.EntityFrameworkCore.Analyzers                      8.0.11       
+   > Microsoft.EntityFrameworkCore.Sqlite                         8.0.11       
+   > Microsoft.EntityFrameworkCore.Sqlite.Core                    8.0.11       
+   > Microsoft.Extensions.ApiDescription.Server                   6.0.5        
+   > Microsoft.Extensions.Caching.Abstractions                    8.0.0        
+   > Microsoft.Extensions.Caching.Memory                          8.0.1        
+   > Microsoft.Extensions.Configuration                           8.0.0        
+   > Microsoft.Extensions.Configuration.Binder                    8.0.2        
+   > Microsoft.Extensions.Configuration.CommandLine               8.0.0        
+   > Microsoft.Extensions.Configuration.EnvironmentVariables      8.0.0        
+   > Microsoft.Extensions.Configuration.FileExtensions            8.0.0        
+   > Microsoft.Extensions.Configuration.Json                      8.0.0        
+   > Microsoft.Extensions.Configuration.UserSecrets               8.0.0        
+   > Microsoft.Extensions.DependencyInjection                     8.0.1        
+   > Microsoft.Extensions.DependencyModel                         8.0.2        
+   > Microsoft.Extensions.Diagnostics                             8.0.0        
+   > Microsoft.Extensions.Diagnostics.Abstractions                8.0.0        
+   > Microsoft.Extensions.Features                                8.0.0        
+   > Microsoft.Extensions.FileProviders.Abstractions              8.0.0        
+   > Microsoft.Extensions.FileProviders.Physical                  8.0.0        
+   > Microsoft.Extensions.FileSystemGlobbing                      8.0.0        
+   > Microsoft.Extensions.Hosting                                 8.0.0        
+   > Microsoft.Extensions.Hosting.Abstractions                    8.0.0        
+   > Microsoft.Extensions.Logging                                 8.0.1        
+   > Microsoft.Extensions.Logging.Configuration                   8.0.0        
+   > Microsoft.Extensions.Logging.Console                         8.0.0        
+   > Microsoft.Extensions.Logging.Debug                           8.0.0        
+   > Microsoft.Extensions.Logging.EventLog                        8.0.0        
+   > Microsoft.Extensions.Logging.EventSource                     8.0.0        
+   > Microsoft.Extensions.ObjectPool                              8.0.0        
+   > Microsoft.Extensions.Options                                 8.0.2        
+   > Microsoft.Extensions.Options.ConfigurationExtensions         8.0.0        
+   > Microsoft.Extensions.Primitives                              8.0.0        
+   > Microsoft.IdentityModel.Abstractions                         7.1.2        
+   > Microsoft.IdentityModel.JsonWebTokens                        7.1.2        
+   > Microsoft.IdentityModel.Logging                              7.1.2        
+   > Microsoft.IdentityModel.Protocols                            7.1.2        
+   > Microsoft.IdentityModel.Protocols.OpenIdConnect              7.1.2        
+   > Microsoft.IdentityModel.Tokens                               7.1.2        
+   > Microsoft.OpenApi                                            1.6.14       
+   > Microsoft.Orleans.Analyzers                                  8.2.0        
+   > Microsoft.Orleans.CodeGenerator                              8.2.0        
+   > Microsoft.Orleans.Core                                       8.2.0        
+   > Microsoft.Orleans.Core.Abstractions                          8.2.0        
+   > Microsoft.Orleans.Persistence.Memory                         8.2.0        
+   > Microsoft.Orleans.Runtime                                    8.2.0        
+   > Microsoft.Orleans.Sdk                                        8.2.0        
+   > Microsoft.Orleans.Serialization                              8.2.0        
+   > Microsoft.Orleans.Serialization.Abstractions                 8.2.0        
+   > Microsoft.Orleans.Server                                     8.2.0        
+   > Microsoft.Orleans.Streaming                                  8.2.0        
+   > Microsoft.Win32.SystemEvents                                 6.0.0        
+   > Newtonsoft.Json                                              13.0.3       
+   > OpenTelemetry                                                1.15.3       
+   > OpenTelemetry.Api                                            1.15.3       
+   > OpenTelemetry.Api.ProviderBuilderExtensions                  1.15.3       
+   > OpenTelemetry.Exporter.OpenTelemetryProtocol                 1.15.3       
+   > OpenTelemetry.Exporter.Prometheus.AspNetCore                 1.15.3-beta.1
+   > OpenTelemetry.Instrumentation.AspNetCore                     1.15.2       
+   > OpenTelemetry.Instrumentation.EntityFrameworkCore            1.15.1-beta.1
+   > OpenTelemetry.Instrumentation.Http                           1.15.1       
+   > OpenTelemetry.Instrumentation.Runtime                        1.15.1       
+   > Oracle.ManagedDataAccess.Core                                3.21.150     
+   > Pipelines.Sockets.Unofficial                                 2.2.8        
+   > SQLitePCLRaw.bundle_e_sqlite3                                2.1.6        
+   > SQLitePCLRaw.core                                            2.1.6        
+   > SQLitePCLRaw.lib.e_sqlite3                                   2.1.6        
+   > SQLitePCLRaw.provider.e_sqlite3                              2.1.6        
+   > StackExchange.Redis                                          2.8.16       
+   > Superpower                                                   3.0.0        
+   > Swashbuckle.AspNetCore.Swagger                               6.6.2        
+   > Swashbuckle.AspNetCore.SwaggerGen                            6.6.2        
+   > Swashbuckle.AspNetCore.SwaggerUI                             6.6.2        
+   > System.Collections.Immutable                                 6.0.0        
+   > System.Composition                                           6.0.0        
+   > System.Composition.AttributedModel                           6.0.0        
+   > System.Composition.Convention                                6.0.0        
+   > System.Composition.Hosting                                   6.0.0        
+   > System.Composition.Runtime                                   6.0.0        
+   > System.Composition.TypedParts                                6.0.0        
+   > System.Configuration.ConfigurationManager                    6.0.0        
+   > System.Diagnostics.DiagnosticSource                          10.0.0       
+   > System.Diagnostics.EventLog                                  8.0.0        
+   > System.Diagnostics.PerformanceCounter                        6.0.1        
+   > System.DirectoryServices.Protocols                           6.0.2        
+   > System.Drawing.Common                                        6.0.0        
+   > System.Formats.Asn1                                          6.0.0        
+   > System.IdentityModel.Tokens.Jwt                              7.1.2        
+   > System.IO.Hashing                                            8.0.0        
+   > System.IO.Pipelines                                          8.0.0        
+   > System.Memory                                                4.5.3        
+   > System.Memory.Data                                           8.0.0        
+   > System.Reflection.Metadata                                   6.0.1        
+   > System.Runtime.CompilerServices.Unsafe                       6.0.0        
+   > System.Security.AccessControl                                6.0.0        
+   > System.Security.Cryptography.Pkcs                            6.0.4        
+   > System.Security.Cryptography.ProtectedData                   6.0.0        
+   > System.Security.Permissions                                  6.0.0        
+   > System.Text.Encoding.CodePages                               6.0.0        
+   > System.Text.Encodings.Web                                    8.0.0        
+   > System.Text.Json                                             8.0.0        
+   > System.Threading.Channels                                    6.0.0        
+   > System.Windows.Extensions                                    6.0.0        
+
